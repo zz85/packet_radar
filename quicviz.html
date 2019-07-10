@@ -1,0 +1,14 @@
+<body>
+<script src="js/packet_fight.js"></script>
+<script>
+    ws = new WebSocket("ws://localhost:3012")
+    ws.onmessage = (m) => {
+        // console.log(m)
+        var data = JSON.parse(m.data);
+
+        console.log(data);
+    }
+    ws.onopen = () => console.log('connected');
+    ws.onclosed = () => console.log('disconnected');
+</script>
+</body>
