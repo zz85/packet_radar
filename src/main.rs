@@ -1,90 +1,104 @@
+#![feature(drain_filter)]
+
+use dns_lookup::{lookup_addr};
 use pcap::{Device,Capture};
 use pnet::packet::{*};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
-use std::net::IpAddr;
-use dns_lookup::{lookup_addr};
 use pnet::packet::udp::UdpPacket;
-
-use std::thread;
+use serde_json::json;
 use websocket::sync::{Server, Client};
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
+
+use std::sync::{Arc, RwLock};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::net::IpAddr;
 use std::net::TcpStream;
-use serde_json::json;
+use std::thread;
+use std::env;
+
 
 struct PacketInfo {
 	host: String,
 }
 
 fn main() {
-	let server = Server::bind("127.0.0.1:3012").unwrap();
+	// let mut moo = PacketInfo { host: "Moo ".to_owned()};
+	// moo.host = "321".to_string();
+
+	let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
+
+	let server = Server::bind(bind).unwrap();
+    let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
+
+    let (tx, rx) = mpsc::channel();
+
+    spawn_broadcast(rx, clients.clone());
+
+    thread::spawn(move|| cap(tx));
 
 	for connection in server.filter_map(Result::ok) {
+        let clients = clients.clone();
 		thread::spawn(move || {
 			let ws = connection.accept().unwrap();
+            let (_rx, tx) = ws.split().unwrap();
 
-			cap(ws);
+            clients.write().unwrap().push(tx);
 		});
 	}
 }
 
-fn cap(ws: Client<TcpStream>) {
-	let (rx, mut tx) = ws.split().unwrap();
+fn spawn_broadcast(rx: Receiver<OwnedMessage>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
+    thread::spawn(move|| {
+        for message in rx.iter() {
+            clients.write().unwrap().drain_filter(|c| c.send_message(&message).is_err());
+        }
+    });
+}
 
-	println!("Hello pcap!");
-	println!("Device {:?}", Device::list());
+fn cap(tx: Sender<OwnedMessage>) {
+	println!("Running pcap...");
+	println!("Devices {:?}", Device::list());
 
 	let device = Device::lookup().unwrap();
-	println!("Device {:?}", device);
+	println!("Lookup device {:?}", device);
 	let name = device.name.as_str();
-	// name can be any 
+	// name can be "any"
 
-	let mut cap = Capture::from_device(name).unwrap()
-			.timeout(1000)
-			.promisc(true)
-			.snaplen(5000)
-			.open()
-			// .filter("udp")
-			.unwrap();
+	let mut cap = Capture::from_device(name)
+		.unwrap()
+		.timeout(1000)
+		.promisc(true)
+		.snaplen(5000)
+		.open()
+		// .filter("udp")
+		.unwrap();
 
 	loop {
-		/*
-received packet! Packet { header: PacketHeader { ts: 1562763186.719098, caplen: 68, len: 68 }, data: [240, 24, 152, 81, 58, 182, 136, 180, 166, 253, 120, 173, 8, 6, 0, 1, 8, 0, 6, 4, 0, 2, 136, 180, 166, 253, 120, 173, 192, 168, 0, 1, 240, 24, 152, 81, 58, 182, 192, 168, 0, 10, 141, 86, 156, 176, 167, 123, 211, 21, 108, 186, 149, 145, 4, 12, 18, 24, 96, 48, 157, 6, 35, 142, 166, 13, 119, 241] }
-received packet! Packet { header: PacketHeader { ts: 1562763187.589954, caplen: 74, len: 74 }, data: [136, 180, 166, 253, 120, 173, 240, 24, 152, 81, 58, 182, 134, 221, 96, 15, 52, 97, 0, 20, 6, 64, 38, 1, 6, 2, 145, 0, 33, 48, 101, 137, 205, 57, 96, 24, 64, 105, 32, 1, 4, 112, 0, 1, 3, 168, 0, 0, 0, 0, 0, 0, 2, 2, 201, 247, 1, 187, 124, 242, 185, 160, 167, 39, 249, 74, 80, 16, 8, 0, 41, 136, 0, 0] }
-received packet! Packet { header: PacketHeader { ts: 1562763187.622255, caplen: 94, len: 94 }, data: [240, 24, 152, 81, 58, 182, 136, 180, 166, 253, 120, 173, 134, 221, 98, 15, 43, 167, 0, 32, 6, 55, 32, 1, 4, 112, 0, 1, 3, 168, 0, 0, 0, 0, 0, 0, 2, 2, 38, 1, 6, 2, 145, 0, 33, 48, 101, 137, 205, 57, 96, 24, 64, 105, 1, 187, 201, 247, 167, 39, 249, 74, 124, 242, 185, 161, 128, 16, 0, 67, 17, 137, 0, 0, 1, 1, 8, 10, 227, 254, 150, 245, 52, 180, 54, 251, 48, 83, 14, 83, 35, 34, 21, 144] }
-		*/
-
 		match cap.next() {
 			Ok(packet) => {
 				// println!("received packet! {:?}", packet);
-				let  header = packet.header;
+				let header = packet.header;
 				if header.caplen != header.len {
-					println!("len {} cap len {}, len {}", packet.len(),  header.caplen, header.len);
+					println!("Warning bad packet.. len {}: caplen: {}, header len: {}", packet.len(),  header.caplen, header.len);
 				}
 
-				// println!("len {} cap len {}, len {}", packet.len(),  header.caplen, header.len);
-				// println!("received {:#X?}", packet.data);
-				// println!("received {:?}", packet.data);
+				// .ts
 
-				// let p = PacketData::Borrowed(&packet);
 				let ether = EthernetPacket::new(&packet).unwrap();
-				// println!("received ether {:?}", ether);
 				let etherType = ether.get_ethertype();
-				// println!("received etherType {}", etherType);
-
-				// ether.get_destination MAC, ether.get_source
 
 				match etherType {
 					EtherTypes::Ipv4 => {
 						// print!("IPV4 ");
-						handle_ipv4_packet("meow", &ether, &mut tx);
+						handle_ipv4_packet("meow", &ether, &tx);
 					},
 					EtherTypes::Ipv6 => {
 						// print!("IPV6 ");
-						handle_ipv6_packet("woof", &ether, &mut tx);
+						handle_ipv6_packet("woof", &ether, &tx);
 					},
 					EtherTypes::Arp => {
 						// println!("ARP");
@@ -106,11 +120,11 @@ received packet! Packet { header: PacketHeader { ts: 1562763187.622255, caplen: 
 		}
 
 		let stats = cap.stats().unwrap();
-    	// println!("Received: {}, dropped: {}, if_dropped: {}", stats.received, stats.dropped, stats.if_dropped);
+    	// println!("Stats: Received: {}, Dropped: {}, if_dropped: {}", stats.received, stats.dropped, stats.if_dropped);
 	}
 }
 
-fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &mut Writer<TcpStream>) {
+fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
     let header = Ipv4Packet::new(ethernet.payload());
 	// println!("payload length: {}", (*ethernet.payload()).len());
     if let Some(header) = header {
@@ -127,7 +141,7 @@ fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &mut 
     }
 }
 
-fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &mut Writer<TcpStream>) {
+fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
     let header = Ipv6Packet::new(ethernet.payload());
 	// println!("payload length: {}", (*ethernet.payload()).len());
     if let Some(header) = header {
@@ -145,9 +159,9 @@ fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &mut 
 }
 
 fn handle_udp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, packet: &[u8],
-	tx: &mut Writer<TcpStream>,
+	tx: &Sender<OwnedMessage>
 ) {
-	// tx.send_message(&OwnedMessage::Text("hello".to_string())).unwrap();
+	// tx.send(OwnedMessage::Text("hello".to_string())).unwrap();
 
 	let dest_host = lookup_addr(&destination).unwrap();
     let udp = UdpPacket::new(packet);
@@ -166,7 +180,7 @@ fn handle_udp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, 
 		});
 
 		println!("{}", p.to_string());
-		tx.send_message(&OwnedMessage::Text(p.to_string())).unwrap();
+		tx.send(OwnedMessage::Text(p.to_string())).unwrap();
 
         println!(
             "[{}]: UDP Packet: {}:{} > {}:{}; length: {}",
@@ -178,7 +192,12 @@ fn handle_udp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, 
             udp.get_length()
         );
 
-		println!("Payload {:?}", udp.payload());
+		// start parsing 
+		let payload = udp.payload();
+		// payload[]
+
+
+		// println!("Payload {:?}", udp.payload());
 
     } else {
         println!("[{}]: Malformed UDP Packet", interface_name);
@@ -192,7 +211,7 @@ fn handle_transport_protocol(
     destination: IpAddr,
     protocol: IpNextHeaderProtocol,
     packet: &[u8],
-	tx: &mut Writer<TcpStream>,
+	tx: &Sender<OwnedMessage>,
 ) {
   	// let dest_host = lookup_addr(&destination).unwrap();
 	// println!("Protocol: {}, Source: {}, Destination: {} ({})", protocol, source, destination, dest_host);
@@ -210,7 +229,8 @@ fn handle_transport_protocol(
         IpNextHeaderProtocols::Icmpv6 => {
             // handle_icmpv6_packet(interface_name, source, destination, packet)
         }
-        _ => println!(
+        _ => {
+			/*println!(
             "[{}]: Unknown {} packet: {} > {}; protocol: {:?} length: {}",
             interface_name,
             match source {
@@ -221,13 +241,7 @@ fn handle_transport_protocol(
             destination,
             protocol,
             packet.len()
-        ),
+        )*/
+		},
     }
 }
-
-
-
-/*
-https://docs.rs/pnet/0.22.0/pnet/packet/ethernet/EtherTypes/index.html
-
-*/

@@ -30,6 +30,8 @@
  * - identify own host
  * - more random-ness?
  * - alter size based on recent activity?
+ * - click interactivity
+ * - 
  */
 
 class qNode {
