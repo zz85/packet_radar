@@ -11,6 +11,7 @@ use pnet::packet::udp::UdpPacket;
 use std::thread;
 use websocket::sync::{Server, Client};
 use websocket::message::OwnedMessage;
+use websocket::sender::Writer;
 use std::net::TcpStream;
 use serde_json::json;
 
@@ -23,13 +24,16 @@ fn main() {
 
 	for connection in server.filter_map(Result::ok) {
 		thread::spawn(move || {
-			let client = connection.accept().unwrap();
-			cap(&client);
+			let ws = connection.accept().unwrap();
+
+			cap(ws);
 		});
 	}
 }
 
-fn cap(client:&Client<TcpStream>) {
+fn cap(ws: Client<TcpStream>) {
+	let (rx, mut tx) = ws.split().unwrap();
+
 	println!("Hello pcap!");
 	println!("Device {:?}", Device::list());
 
@@ -76,11 +80,11 @@ received packet! Packet { header: PacketHeader { ts: 1562763187.622255, caplen: 
 				match etherType {
 					EtherTypes::Ipv4 => {
 						print!("IPV4 ");
-						handle_ipv4_packet("meow", &ether, &client);
+						handle_ipv4_packet("meow", &ether, &mut tx);
 					},
 					EtherTypes::Ipv6 => {
 						print!("IPV6 ");
-						handle_ipv6_packet("woof", &ether, &client);
+						handle_ipv6_packet("woof", &ether, &mut tx);
 					},
 					EtherTypes::Arp => {
 						// println!("ARP");
@@ -106,7 +110,7 @@ received packet! Packet { header: PacketHeader { ts: 1562763187.622255, caplen: 
 	}
 }
 
-fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, client: &Client<TcpStream>) {
+fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &mut Writer<TcpStream>) {
     let header = Ipv4Packet::new(ethernet.payload());
 	// println!("payload length: {}", (*ethernet.payload()).len());
     if let Some(header) = header {
@@ -116,14 +120,14 @@ fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, client: &
             IpAddr::V4(header.get_destination()),
             header.get_next_level_protocol(),
             header.payload(),
-			&client
+			tx
         );
     } else {
         println!("[{}]: Malformed IPv4 Packet", interface_name);
     }
 }
 
-fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, client: &Client<TcpStream>) {
+fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &mut Writer<TcpStream>) {
     let header = Ipv6Packet::new(ethernet.payload());
 	// println!("payload length: {}", (*ethernet.payload()).len());
     if let Some(header) = header {
@@ -133,7 +137,7 @@ fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, client: &
             IpAddr::V6(header.get_destination()),
             header.get_next_header(),
             header.payload(),
-			&client
+			tx
         );
     } else {
         println!("[{}]: Malformed IPv6 Packet", interface_name);
@@ -141,12 +145,11 @@ fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, client: &
 }
 
 fn handle_udp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, packet: &[u8],
-	client: &Client<TcpStream>,
+	tx: &mut Writer<TcpStream>,
 ) {
 
-	let (_, mut sender) = client.split().unwrap();
-	// sender.send_message(&OwnedMessage::Text("hello".to_string())).unwrap();
-	// sender.send_message(&OwnedMessage::Text(p.to_string())).unwrap();
+	tx.send_message(&OwnedMessage::Text("hello".to_string())).unwrap();
+	//tx.send_message(&OwnedMessage::Text(p.to_string())).unwrap();
 
 
 	let dest_host = lookup_addr(&destination).unwrap();
@@ -185,14 +188,14 @@ fn handle_transport_protocol(
     destination: IpAddr,
     protocol: IpNextHeaderProtocol,
     packet: &[u8],
-	client: &Client<TcpStream>,
+	tx: &mut Writer<TcpStream>,
 ) {
   	// let dest_host = lookup_addr(&destination).unwrap();
 	// println!("Protocol: {}, Source: {}, Destination: {} ({})", protocol, source, destination, dest_host);
 
     match protocol {
         IpNextHeaderProtocols::Udp => {
-            handle_udp_packet(interface_name, source, destination, packet, &client)
+            handle_udp_packet(interface_name, source, destination, packet, tx)
         }
         IpNextHeaderProtocols::Tcp => {
             // handle_tcp_packet(interface_name, source, destination, packet)
