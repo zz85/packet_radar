@@ -79,11 +79,11 @@ received packet! Packet { header: PacketHeader { ts: 1562763187.622255, caplen: 
 
 				match etherType {
 					EtherTypes::Ipv4 => {
-						print!("IPV4 ");
+						// print!("IPV4 ");
 						handle_ipv4_packet("meow", &ether, &mut tx);
 					},
 					EtherTypes::Ipv6 => {
-						print!("IPV6 ");
+						// print!("IPV6 ");
 						handle_ipv6_packet("woof", &ether, &mut tx);
 					},
 					EtherTypes::Arp => {
@@ -147,10 +147,7 @@ fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &mut 
 fn handle_udp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, packet: &[u8],
 	tx: &mut Writer<TcpStream>,
 ) {
-
-	tx.send_message(&OwnedMessage::Text("hello".to_string())).unwrap();
-	//tx.send_message(&OwnedMessage::Text(p.to_string())).unwrap();
-
+	// tx.send_message(&OwnedMessage::Text("hello".to_string())).unwrap();
 
 	let dest_host = lookup_addr(&destination).unwrap();
     let udp = UdpPacket::new(packet);
@@ -160,9 +157,16 @@ fn handle_udp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, 
     if let Some(udp) = udp {
 		let p = json!({
 			"len": udp.get_length(),
-			"dest": udp.get_destination(),
-			"src": udp.get_source(),
+			"dest":
+				destination,
+				// format!("{}:{}", destination, udp.get_destination()),
+			"src":
+				source,
+				// format!("{}:{}", source, udp.get_source()),
 		});
+
+		println!("{}", p.to_string());
+		tx.send_message(&OwnedMessage::Text(p.to_string())).unwrap();
 
         println!(
             "[{}]: UDP Packet: {}:{} > {}:{}; length: {}",

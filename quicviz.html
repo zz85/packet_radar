@@ -3,10 +3,13 @@
 <script>
     ws = new WebSocket("ws://localhost:3012")
     ws.onmessage = (m) => {
-        // console.log(m)
-        var data = JSON.parse(m.data);
-
-        console.log(data);
+        try {
+            var data = JSON.parse(m.data);
+            console.log(data);
+            manager.process(data);
+        } catch (e) {
+            console.log(m)
+        }
     }
     ws.onopen = () => console.log('connected');
     ws.onclosed = () => console.log('disconnected');

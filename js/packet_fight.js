@@ -23,6 +23,15 @@
  * - the rendering (canvas)
  */
 
+
+/**
+ * Improvements
+ * - give an initial velocity on packet firing
+ * - identify own host
+ * - more random-ness?
+ * - alter size based on recent activity?
+ */
+
 class qNode {
     constructor(x, y, label) {
         this.x = x;
@@ -37,9 +46,10 @@ class qNode {
     }
 
     // shoots packet
-    isSending(target) {
+    isSending(target, size) {
         var packet = new qNode(this.x + rand(this.r), this.y + rand(this.r));
-        packet.r = 10;
+        size = size || 100;
+        packet.r = Math.sqrt(size);
         packet.target = target;
         if (!this.fires) this.fires = [];
         this.fires.push(packet);
@@ -135,6 +145,10 @@ class qCanvas {
         this.nodes.push(node);
     }
 
+    remove(node) {
+        this.nodes.splice(this.nodes.indexOf(node), 1);
+    }
+
     simulate() {
         const nodes = this.nodes;
 
@@ -184,16 +198,31 @@ class qCanvas {
 class EventManager {
     constructor() {
         this.hosts = new Map();
-    }
-    process(event) {
-        // packet from a, b
+        setInterval(() => this.cleanup(), 1000);
     }
 
-    packet(src, dst) {
+    cleanup() {
+        // keep track of nodes ttl, remove nodes when idle activity is detected 
+        const now = Date.now();
+        canvas.nodes.forEach(node => {
+            if (now - node.lastActivity > 10000) {
+                this.removeHost(node.label);
+            }
+        })
+    }
+
+    process(event) {
+        // packet from a, b
+        this.packet(event.src, event.dest, event.length);
+    }
+
+    packet(src, dst, size) {
         var a = this.getHost(src);
         var b = this.getHost(dst);
+        a.lastActivity = Date.now()
+        b.lastActivity = Date.now()
         // TODO if a and b are too close, defer animation
-        setTimeout(() => a.isSending(b), 100);
+        setTimeout(() => a.isSending(b, size), 100);
         
     }
 
@@ -206,6 +235,11 @@ class EventManager {
         canvas.add(node);
         this.hosts.set(host, node);
         return node;
+    }
+
+    removeHost(host) {
+        this.hosts.delete(host);
+        canvas.remove(host);
     }
 }
 
