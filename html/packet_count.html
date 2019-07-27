@@ -1,22 +1,81 @@
 <body>
-    <div id="label" style="font-size: 20px">
-    </div>
+    <style>
+        body {
+            font-size: 20px
+        }
+    </style>
+    <div id="packet_label"></div>
+    <div id="byte_label"></div>
     <script src="js/packet_server.js"></script>
     <script>
         var last = Date.now();
-        var count = 0;
+
+        class Counter {
+            constructor(label) {
+                this.count = 0;
+            }
+
+            inc(number) {
+                number = number === undefined ? 1 : number;
+                this.count += number;
+            }
+
+            reset() {
+                const count = this.count;
+                this.count = 0;
+                return count;
+            }
+        }
+        var packet_count = new Counter();
+        var byte_count = new Counter();
+
+        function formatBytes(number) {
+            if (number < 1024) {
+                return number.toFixed(3) + ' B';
+            }
+
+            number /= 1024;
+            if (number < 1024) {
+                return number.toFixed(3) + ' KB';
+            }
+
+            number /= 1024;
+            if (number < 1024) {
+                return number.toFixed(3) + ' MB';
+            }
+
+            number /= 1024;
+            if (number < 1024) {
+                return number.toFixed(3) + ' GB';
+            }
+
+            number /= 1024;
+            return number.toFixed(3) + ' TB';
+        }
+
+        const INTERVAL = 3000;
 
         setInterval(() => {
             var now = Date.now();
             var diff = now - last;
             last = now;
             // updates counter every 2 seconds
-            label.innerHTML = (count / diff * 1000).toFixed(2) + ' packet / second';
-            count = 0;
-        }, 500);
+            packet_label.innerHTML = (packet_count.reset() / diff * 1000).toFixed(2) + ' packets / second';
+
+            var bytes = byte_count.reset();
+            var bps = (bytes / diff * 1000);
+            byte_label.innerHTML = formatBytes(bps) + ' / second';
+
+        }, INTERVAL);
         connect_packet_server(data => {
-            console.log(data);
-            count++;
+            // console.log(data);
+            packet_count.inc();
+            byte_count.inc(data.len);
         });
+
+        // IDEAS
+        // use different internval (1s, 3s, 10s) or use exponential decaying/moving average
+        // line graph
+        // filter or breakdown
     </script>
 </body>
