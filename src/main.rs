@@ -6,6 +6,7 @@ use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
+use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
 use pnet::packet::*;
 use serde_json::json;
@@ -218,6 +219,37 @@ fn handle_udp_packet(
     }
 }
 
+fn handle_tcp_packet(
+    interface_name: &str,
+    source: IpAddr,
+    destination: IpAddr,
+    packet: &[u8],
+    tx: &Sender<OwnedMessage>,
+) {
+    let tcp = TcpPacket::new(packet);
+    if let Some(tcp) = tcp {
+        println!(
+            "[{}]: TCP Packet: {}:{} > {}:{}; length: {}",
+            interface_name,
+            source,
+            tcp.get_source(),
+            destination,
+            tcp.get_destination(),
+            packet.len()
+        );
+
+        let p = json!({
+            "len": tcp.packet_size(),
+            "dest": destination,
+            "src": source,
+        });
+
+        tx.send(OwnedMessage::Text(p.to_string())).unwrap();
+    } else {
+        println!("[{}]: Malformed TCP Packet", interface_name);
+    }
+}
+
 fn handle_transport_protocol(
     interface_name: &str,
     source: IpAddr,
@@ -234,7 +266,7 @@ fn handle_transport_protocol(
             handle_udp_packet(interface_name, source, destination, packet, tx)
         }
         IpNextHeaderProtocols::Tcp => {
-            // handle_tcp_packet(interface_name, source, destination, packet)
+            handle_tcp_packet(interface_name, source, destination, packet, tx)
         }
         IpNextHeaderProtocols::Icmp => {
             // handle_icmp_packet(interface_name, source, destination, packet)
