@@ -137,6 +137,8 @@ class qCanvas {
         this.ctx = ctx;
         this.w = w;
         this.h = h;
+        ctx.strokeStyle = '#fff';
+        ctx.fillStyle = '#fff';
 
         ctx.scale(dpr, dpr);
 

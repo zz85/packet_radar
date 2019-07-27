@@ -11,59 +11,9 @@
     </style>
 
     <script src="js/packet_server.js"></script>
+    <script src="js/stats.js"></script>
     <script>
         var last = Date.now();
-
-        class CountManager {
-            constructor() {
-                this.labels = new Map();
-            }
-
-            add(id, label) {
-                const counter = new Counter(label);
-                this.labels.set(id, counter);
-            }
-
-            inc(name, value) {
-                return this.get(name).inc(value);
-            }
-
-            reset(name) {
-                return this.get(name).reset();
-            }
-
-            get(name) {
-                return this.labels.get(name);
-            }
-
-            forEach(func) {
-                this.labels.forEach(func);
-            }
-        }
-
-        class Counter {
-            constructor(label, units) {
-                this.label = label || '';
-                this.units = units;
-                this.value = 0;
-            }
-
-            inc(number) {
-                number = number === undefined ? 1 : number;
-                this.value += number;
-            }
-
-            reset() {
-                const count = this.value;
-                this.value = 0;
-                if (this.units) return this.units(count);
-                return count;
-            }
-
-            val() {
-                return this.value;
-            }
-        }
 
         var packet_count = new Counter();
         var byte_count = new Counter();
@@ -120,7 +70,7 @@
 
         const INTERVAL = 3000;
 
-        setInterval(() => {
+        function updateStats() {
             var now = Date.now();
             var diff = now - last;
             last = now;
@@ -139,7 +89,11 @@
                 window[`${name}_label`].innerHTML = `${counter.label}: ${formatBytes(counter.val() * PER_SEC)}`
             })
 
-        }, INTERVAL);
+            setTimeout(updateStats, INTERVAL);
+        }
+
+        updateStats();
+
         connect_packet_server(data => {
             // console.log(data);
             var len = data.len;
