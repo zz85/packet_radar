@@ -1,3 +1,4 @@
+<html>
 <body>
     <style>
         body {
@@ -8,28 +9,59 @@
             padding: 20px;
         }
     </style>
-    <div id="packet_label"></div>
-    <div id="byte_label"></div>
-    <div id="bytes_in_label"></div>
-    <div id="bytes_out_label"></div>
+
     <script src="js/packet_server.js"></script>
     <script>
         var last = Date.now();
 
+        class CountManager {
+            constructor() {
+                this.labels = new Map();
+            }
+
+            add(id, label) {
+                const counter = new Counter(label);
+                this.labels.set(id, counter);
+            }
+
+            inc(name, value) {
+                return this.get(name).inc(value);
+            }
+
+            reset(name) {
+                return this.get(name).reset();
+            }
+
+            get(name) {
+                return this.labels.get(name);
+            }
+
+            forEach(func) {
+                this.labels.forEach(func);
+            }
+        }
+
         class Counter {
-            constructor(label) {
-                this.count = 0;
+            constructor(label, units) {
+                this.label = label || '';
+                this.units = units;
+                this.value = 0;
             }
 
             inc(number) {
                 number = number === undefined ? 1 : number;
-                this.count += number;
+                this.value += number;
             }
 
             reset() {
-                const count = this.count;
-                this.count = 0;
+                const count = this.value;
+                this.value = 0;
+                if (this.units) return this.units(count);
                 return count;
+            }
+
+            val() {
+                return this.value;
             }
         }
 
@@ -58,16 +90,36 @@
             }
         }
 
-
         var packet_count = new Counter();
         var byte_count = new Counter();
         var bytes_in = new Counter();
         var bytes_out = new Counter();
 
+        var counter = new CountManager();
+        counter.add('packet_count');
+        counter.add('byte_count');
+        counter.add('bytes_in', 'Data recv/sec');
+        counter.add('bytes_out', 'Data sent/sec');
+
+        var all_counter = new CountManager();
+        all_counter.add('all_bytes_in', 'Data received');
+        all_counter.add('all_bytes_out', 'Data sent');
+
+        counter.forEach((counter, name) => createDiv(name));
+        all_counter.forEach((counter, name) => createDiv(name));
+
         var buffer = new CircularBuffer();
+
+        // TODO fix this
         var local_ip4 = '192.168.0.10';
         var local_ip6 = '2601:602:9100:2130:894f:d24f:d838:8851';
         // 2601:602:9100:2130:1c90:17fe:6881:7a7
+
+        function createDiv(label) {
+            var div = document.createElement('div');
+            div.id = label + '_label';
+            document.body.appendChild(div);
+        }
 
         function formatBytes(number) {
             if (number < 1024) {
@@ -99,15 +151,20 @@
             var now = Date.now();
             var diff = now - last;
             last = now;
+            var PER_SEC = 1000 / diff;
             // updates counter every 2 seconds
-            packet_label.innerHTML = (packet_count.reset() / diff * 1000).toFixed(2) + ' packets / second';
+            packet_count_label.innerHTML = (packet_count.reset() * PER_SEC).toFixed(2) + ' packets / second';
 
             var bytes = byte_count.reset();
-            var bps = (bytes / diff * 1000);
-            byte_label.innerHTML = formatBytes(bps) + ' / second';
+            var bps = (bytes * PER_SEC);
+            byte_count_label.innerHTML = formatBytes(bps) + ' / second';
 
-            bytes_in_label.innerHTML = formatBytes(bytes_in.reset() / diff * 1000) + ' in / second';
-            bytes_out_label.innerHTML = formatBytes(bytes_out.reset() / diff * 1000) + ' out / second';
+            bytes_in_label.innerHTML = formatBytes(bytes_in.reset() * PER_SEC) + ' in / second';
+            bytes_out_label.innerHTML = formatBytes(bytes_out.reset() * PER_SEC) + ' out / second';
+
+            all_counter.forEach((counter, name) => {
+                window[`${name}_label`].innerHTML = `${counter.label}: ${formatBytes(counter.val() * PER_SEC)}`
+            })
 
         }, INTERVAL);
         connect_packet_server(data => {
@@ -121,8 +178,10 @@
 
             if (src === local_ip4 || src  === local_ip6) {
                 bytes_out.inc(len);
+                all_counter.inc('all_bytes_out', len);
             } else {
                 bytes_in.inc(len);
+                all_counter.inc('all_bytes_in', len);
             }
         });
 
@@ -134,3 +193,4 @@
         // make dashboard configurable + bindings to counters
     </script>
 </body>
+</html>
