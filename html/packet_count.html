@@ -1,11 +1,17 @@
 <body>
     <style>
         body {
-            font-size: 20px
+            font-size: 30px
+        }
+
+        div {
+            padding: 20px;
         }
     </style>
     <div id="packet_label"></div>
     <div id="byte_label"></div>
+    <div id="bytes_in_label"></div>
+    <div id="bytes_out_label"></div>
     <script src="js/packet_server.js"></script>
     <script>
         var last = Date.now();
@@ -26,8 +32,42 @@
                 return count;
             }
         }
+
+        class CircularBuffer {
+            constructor(size) {
+                size = size || 100;
+                this.buffer = new Array(size);
+                this.size = size;
+                this.pointer = 0;
+            }
+
+            put(item) {
+                var p = this.pointer;
+                this.buffer[p] = item;
+                this.pointer = (p + 1) % this.size;
+            }
+
+            last10() {
+                var p = this.pointer + this.size - 10;
+                var items = []
+                for (var i = 0; i < 10; i++) {
+                    items.push(this.buffer[(i + p) % this.size]);
+                }
+
+                return items;
+            }
+        }
+
+
         var packet_count = new Counter();
         var byte_count = new Counter();
+        var bytes_in = new Counter();
+        var bytes_out = new Counter();
+
+        var buffer = new CircularBuffer();
+        var local_ip4 = '192.168.0.10';
+        var local_ip6 = '2601:602:9100:2130:894f:d24f:d838:8851';
+        // 2601:602:9100:2130:1c90:17fe:6881:7a7
 
         function formatBytes(number) {
             if (number < 1024) {
@@ -66,16 +106,31 @@
             var bps = (bytes / diff * 1000);
             byte_label.innerHTML = formatBytes(bps) + ' / second';
 
+            bytes_in_label.innerHTML = formatBytes(bytes_in.reset() / diff * 1000) + ' in / second';
+            bytes_out_label.innerHTML = formatBytes(bytes_out.reset() / diff * 1000) + ' out / second';
+
         }, INTERVAL);
         connect_packet_server(data => {
             // console.log(data);
+            var len = data.len;
+            var src = data.src;
+
             packet_count.inc();
-            byte_count.inc(data.len);
+            byte_count.inc(len);
+            buffer.put(data);
+
+            if (src === local_ip4 || src  === local_ip6) {
+                bytes_out.inc(len);
+            } else {
+                bytes_in.inc(len);
+            }
         });
 
         // IDEAS
         // use different internval (1s, 3s, 10s) or use exponential decaying/moving average
+        // average, 50, 95, 98 packet size?
         // line graph
         // filter or breakdown
+        // make dashboard configurable + bindings to counters
     </script>
 </body>
