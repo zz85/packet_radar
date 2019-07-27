@@ -1,0 +1,22 @@
+<body>
+    <div id="label" style="font-size: 20px">
+    </div>
+    <script src="js/packet_server.js"></script>
+    <script>
+        var last = Date.now();
+        var count = 0;
+
+        setInterval(() => {
+            var now = Date.now();
+            var diff = now - last;
+            last = now;
+            // updates counter every 2 seconds
+            label.innerHTML = (count / diff * 1000).toFixed(2) + ' packet / second';
+            count = 0;
+        }, 500);
+        connect_packet_server(data => {
+            console.log(data);
+            count++;
+        });
+    </script>
+</body>
