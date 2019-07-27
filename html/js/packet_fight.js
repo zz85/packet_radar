@@ -1,20 +1,20 @@
 /**
- * Part of my Quic visualization experiments
+ * Part of my network/packet visualization experiments
  * 1. packet fight
  * 2. bandwidth usage / packet count over time
  * 3. handshake timeline
- * 
+ *
  * Packet Fight visualize the exchange of packets
  * across multiple nodes
- * 
+ *
  * The size of each packet is visualized as the size
  * of the balls moving from one host to another
- * 
+ *
  * Scaling of time may be required to allow human
  * perception of the movement of packets. A buffer
  * of events can be stored to allow replay and
  * time travel
- * 
+ *
  * Components
  * - event log processor
  * - model post processing (eg. host vs packets)
@@ -31,7 +31,7 @@
  * - more random-ness?
  * - alter size based on recent activity?
  * - click interactivity
- * - 
+ * -
  */
 
 class qNode {
@@ -44,7 +44,7 @@ class qNode {
         // display attr
         this.r = 40;
         this.label = label || '';
-    
+
     }
 
     // shoots packet
@@ -171,7 +171,7 @@ class qCanvas {
         const { ctx, w, h, nodes } = this;
         ctx.save();
         ctx.clearRect(0, 0, w, h);
-        
+
         //  point the view port to the center for now
         var ax = 0;
         var ay = 0;
@@ -204,7 +204,7 @@ class EventManager {
     }
 
     cleanup() {
-        // keep track of nodes ttl, remove nodes when idle activity is detected 
+        // keep track of nodes ttl, remove nodes when idle activity is detected
         const now = Date.now();
         canvas.nodes.forEach(node => {
             if (now - node.lastActivity > 10000) {
@@ -225,7 +225,7 @@ class EventManager {
         b.lastActivity = Date.now()
         // TODO if a and b are too close, defer animation
         setTimeout(() => a.isSending(b, size), 100);
-        
+
     }
 
     getHost(host) {
