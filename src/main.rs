@@ -181,12 +181,10 @@ fn handle_udp_packet(
 ) {
     // tx.send(OwnedMessage::Text("hello".to_string())).unwrap();
 
-    let dest_host = lookup_addr(&destination).unwrap();
+    // let dest_host = lookup_addr(&destination).unwrap();
+    // println!("Name look up from:  {} to {}", destination, dest_host);
     let udp = UdpPacket::new(packet);
-    println!(
-        "Protocol: UDP, Source: {}, Destination: {} ({})",
-        source, destination, dest_host
-    );
+    println!("Protocol: UDP, Source: {}, Destination: {}", source, destination);
 
     if let Some(udp) = udp {
         let p = json!({
