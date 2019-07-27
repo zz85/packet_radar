@@ -20,9 +20,18 @@ rustup default nightly
 ### Compile and run
 cargo run
 
+### On Linux Kernel >= 2.2
+cargo build
+sudo setcap cap_net_raw,cap_net_admin=eip target/debug/packet_radar
+cargo run
+
+(s/debug/release if --release)
+
 ### Or if you require sudo
 cargo build
 sudo target/debug/packet_radar
+
+(s/debug/release if --release)
 ```
 
 ### Visualization
@@ -34,5 +43,4 @@ open `html/packet_viz.html` in your browser
 ### Contributors
 
 - Joshua Koo
-- Yangbin Kwok
-
+- Yang Bin Kwok
