@@ -73,8 +73,8 @@ class qNode {
                 */
 
                 // use easing function
-                n.x += dx * 0.25;
-                n.y += dy * 0.25;
+                n.x += dx * 0.15;
+                n.y += dy * 0.15;
 
                 n.life++;
 
@@ -96,21 +96,18 @@ class qNode {
         if (this.dy < 0.001) this.dy = 0;
     }
 
-    react(node) {
+    react(node, spread, force) {
+        force = force || 2;
         const dx = node.x - this.x;
         const dy = node.y - this.y;
         const d = dx * dx + dy * dy;
 
-        const minSpread = 150;
+        const minSpread = spread || 150;
         const minSpread2 = minSpread * minSpread;
         if (d < minSpread2) {
             // push apart
-            this.dx -= Math.sign(dx) * (minSpread2 - d) / minSpread2;
-            this.dy -= Math.sign(dy) * (minSpread2 - d) / minSpread2;
-            // this.dx -= Math.sign(dx) * 0.5;
-            // this.dy -= Math.sign(dy) * 0.5;
-            // this.dx -= dx * 0.01;
-            // this.dy -= dy * 0.01;
+            this.dx -= Math.sign(dx) * (minSpread2 - d) / minSpread2 * force;
+            this.dy -= Math.sign(dy) * (minSpread2 - d) / minSpread2 * force;
         }
 
         // this.attract(node);
@@ -124,14 +121,14 @@ class qNode {
 
         const target = 100;
 
-        if (d > target) {
-            // TODO attraction equation doesn't look right
-            var pull = d / target * 0.01;
+        // if (d > target) {
+            // TODO check attraction equation
+            var pull = d / target * 1;
 
             // pull together
             this.dx += dx / d * pull;
             this.dy += dy / d * pull;
-        }
+        // }
     }
 
     render(ctx) {
@@ -194,6 +191,8 @@ class qCanvas {
             nodeA = manager.getHost(a);
             nodeB = manager.getHost(b);
             if (nodeA && nodeB) {
+                nodeA.react(nodeB, 808, 3);
+                nodeB.react(nodeA, 808, 3);
                 nodeA.attract(nodeB);
                 nodeB.attract(nodeA);
             }
@@ -215,6 +214,8 @@ class qCanvas {
         const { ctx, w, h, nodes } = this;
         ctx.save();
         ctx.clearRect(0, 0, w, h);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
 
         //  point the view port to the center for now
         var ax = 0;
