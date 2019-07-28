@@ -49,10 +49,11 @@ class qNode {
 
     // shoots packet
     isSending(target, size) {
-        var packet = new qNode(this.x + rand(this.r), this.y + rand(this.r));
+        var packet = new qNode(this.x + rand(this.r  * 4), this.y + rand(this.r * 4));
         size = size || 100;
         packet.r = Math.sqrt(size);
         packet.target = target;
+        packet.life = 0;
         if (!this.fires) this.fires = [];
         this.fires.push(packet);
     }
@@ -63,14 +64,24 @@ class qNode {
             this.fires.forEach(n => {
                 var dx = n.target.x - n.x;
                 var dy = n.target.y - n.y;
+                /*
                 var amp = Math.sqrt(dx * dx + dy * dy);
                 if (amp === 0) amp = 0.001;
 
                 n.x += dx / amp * 40;
                 n.y += dy / amp * 40;
+                */
 
-                if (Math.abs(dx) < n.target.r && Math.abs(dy) < n.target.r) {
-                    console.log('removing');
+                // use easing function
+                n.x += dx * 0.25;
+                n.y += dy * 0.25;
+
+                n.life++;
+
+                // when it reaches target, or simply remove when it's ttl has died.
+                if (Math.abs(dx) / 2 < n.target.r && Math.abs(dy) / 2 < n.target.r
+                    || n.life > 1000
+                ) {
                     this.fires.splice(this.fires.indexOf(n));
                 }
             })
@@ -90,21 +101,36 @@ class qNode {
         const dy = node.y - this.y;
         const d = dx * dx + dy * dy;
 
-        const minSpread = 200;
+        const minSpread = 150;
         const minSpread2 = minSpread * minSpread;
         if (d < minSpread2) {
             // push apart
-            this.dx -= Math.sign(dx) * (minSpread2 - dx * dx) / minSpread2 * 10;
-            this.dy -= Math.sign(dy) * (minSpread2 - dy * dy) / minSpread2 * 10;
+            this.dx -= Math.sign(dx) * (minSpread2 - d) / minSpread2;
+            this.dy -= Math.sign(dy) * (minSpread2 - d) / minSpread2;
+            // this.dx -= Math.sign(dx) * 0.5;
+            // this.dy -= Math.sign(dy) * 0.5;
+            // this.dx -= dx * 0.01;
+            // this.dy -= dy * 0.01;
         }
-        else if (d > minSpread2 * 2) {
+
+        // this.attract(node);
+    }
+
+    attract(node) {
+        const dx = node.x - this.x;
+        const dy = node.y - this.y;
+        const d2 = dx * dx + dy * dy;
+        const d = Math.pow(d2, 0.5);
+
+        const target = 100;
+
+        if (d > target) {
             // TODO attraction equation doesn't look right
-            // also, attract to the CG, not individual lols.
-            var pull = (d - minSpread2 * 3) / d * 1;
+            var pull = d / target * 0.01;
 
             // pull together
-            this.dx += Math.sign(dx) * pull;
-            this.dy += Math.sign(dy) * pull;
+            this.dx += dx / d * pull;
+            this.dy += dy / d * pull;
         }
     }
 
@@ -143,6 +169,11 @@ class qCanvas {
         ctx.scale(dpr, dpr);
 
         this.nodes = [];
+
+        // track last viewport
+        this.viewx = 0;
+        this.viewy = 0;
+        this.zoom = 1;
     }
 
     add(node) {
@@ -157,6 +188,17 @@ class qCanvas {
         const nodes = this.nodes;
 
         var nodeA, nodeB;
+
+        for (let key of manager.links.all_links.keys()) {
+            const [a, b] = key.split('_');
+            nodeA = manager.getHost(a);
+            nodeB = manager.getHost(b);
+            if (nodeA && nodeB) {
+                nodeA.attract(nodeB);
+                nodeB.attract(nodeA);
+            }
+        }
+
         for (var i = 0; i < nodes.length; i++) {
             nodeA = nodes[i];
             for (var j = i + 1; j < nodes.length; j++) {
@@ -187,7 +229,12 @@ class qCanvas {
         ax /= nodes.length;
         ay /= nodes.length;
 
-        ctx.translate(w / 2 - ax, h / 2 - ay);
+        this.viewx += (ax - this.viewx) * 0.65;
+        this.viewy += (ay - this.viewy) * 0.65;
+
+        ctx.translate(w / 2 - this.viewx, h / 2 - this.viewy);
+
+        // ctx.scale(this.zoom, this.zoom);
 
         nodes.forEach(node => node.render(ctx))
 
@@ -202,14 +249,20 @@ class qCanvas {
 class EventManager {
     constructor() {
         this.hosts = new Map();
-        setInterval(() => this.cleanup(), 1000);
+        this.links = new Links()
+        setInterval(() => {
+            this.cleanup()
+        }, 1000);
     }
 
     cleanup() {
+        // when links get clean up
+        this.links.cleanup(15 * 1000);
+        const hosts = this.links.unique()
+
         // keep track of nodes ttl, remove nodes when idle activity is detected
-        const now = Date.now();
         canvas.nodes.forEach(node => {
-            if (now - node.lastActivity > 10000) {
+            if (!hosts.has(node.label)) {
                 this.removeHost(node.label);
             }
         })
@@ -223,17 +276,37 @@ class EventManager {
     packet(src, dst, size) {
         var a = this.getHost(src);
         var b = this.getHost(dst);
-        a.lastActivity = Date.now()
-        b.lastActivity = Date.now()
+
+        if (!a) {
+            a = this.createHost(src, b);
+        }
+
+        if (!b) {
+            b = this.createHost(dst, a);
+        }
+
+        // this.links.update(src, dst, size);
+        // update links
+        var key = Links.key(src, dst);
+        var link = this.links.findOrCreateLink(key);
+        link.update(size);
+
         // TODO if a and b are too close, defer animation
         setTimeout(() => a.isSending(b, size), 100);
-
     }
 
     getHost(host) {
-        if (this.hosts.has(host)) return this.hosts.get(host);
+        return this.hosts.get(host);
+    }
 
-        var node = new qNode(rand(100), rand(100));
+    createHost(host, target) {
+        var tx = rand(200);
+        var ty = rand(200);
+        if (target) {
+            tx += target.x;
+            ty += target.y;
+        }
+        var node = new qNode(tx, ty);
         node.label = host;
 
         canvas.add(node);

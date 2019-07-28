@@ -19,14 +19,26 @@ class Links {
         return link;
     }
 
-    cleanup() {
+    cleanup(threshold) {
+        threshold = threshold || 5 * 1000;
         // remove "inactive" links based on last seen threshold
-        var cutoff = Date.now() - 5 * 1000;
+        var cutoff = Date.now() - threshold;
         for (var [key, item] of this.all_links) {
             if (item.last < cutoff) {
                 this.all_links.delete(key);
             }
         }
+        // TODO emit events when link is removed
+    }
+
+    unique() {
+        var set = new Set();
+        for (let item of this.all_links.values()) {
+            const [a, b] = item.name.split('_')
+            set.add(a);
+            set.add(b);
+        }
+        return set;
     }
 }
 
