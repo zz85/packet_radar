@@ -23,6 +23,10 @@ use std::thread;
 
 const CAPTURE_TCP:bool = true;
 const DEBUG:bool = false;
+const STATS:bool = false;
+
+use dipstick::{AtomicBucket, Stream, ScheduleFlush, InputScope, stats_all, Output};
+use std::io;
 
 struct PacketInfo {
     host: String,
@@ -78,8 +82,10 @@ fn cap(tx: Sender<OwnedMessage>) {
 
     let device = Device::lookup().unwrap();
     println!("Lookup device {:?}", device);
-    let name = device.name.as_str();
-    // name can be "any"
+    let name =
+        device.name.as_str();
+        // "any";
+        // "lo0";
 
     let mut cap = Capture::from_device(name)
         .unwrap()
@@ -92,9 +98,26 @@ fn cap(tx: Sender<OwnedMessage>) {
     // does a bpf filter
     // cap.filter(&"udp").unwrap();
 
+    // set up metrics
+    let bucket = AtomicBucket::new();
+
+    if STATS {
+        bucket.drain(Stream::to_stdout());
+        bucket.flush_every(std::time::Duration::from_secs(1));
+    }
+
+    let mut i = 0;
+
+    let bytes = bucket.counter("bytes: ");
+    let packets = bucket.marker("packets: ");
+
     loop {
+
+        i += 1;
         match cap.next() {
             Ok(packet) => {
+                bytes.count(packet.len());
+                packets.mark();
                 // println!("received packet! {:?}", packet);
                 let header = packet.header;
                 if header.caplen != header.len {
@@ -140,7 +163,11 @@ fn cap(tx: Sender<OwnedMessage>) {
         }
 
         let stats = cap.stats().unwrap();
-        // println!("Stats: Received: {}, Dropped: {}, if_dropped: {}", stats.received, stats.dropped, stats.if_dropped);
+        if i % 10000 == 0 {
+            println!("Stats: Received: {}, Dropped: {}, if_dropped: {}", stats.received, stats.dropped, stats.if_dropped);
+            bucket.stats(stats_all);
+            bucket.flush_to(&Stream::to_stdout().new_scope()).unwrap();
+        }
     }
 }
 

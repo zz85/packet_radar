@@ -30,21 +30,34 @@ class Counter {
         this.label = label || '';
         this.units = units;
         this.value = 0;
+        this.count = 0;
     }
 
     inc(number) {
         number = number === undefined ? 1 : number;
         this.value += number;
+        this.count++;
     }
 
     reset() {
-        const count = this.value;
+        const value = this.value;
         this.value = 0;
+        if (this.units) return this.units(value);
+        return value;
+    }
+
+    resetCount() {
+        const count = this.count;
+        this.count = 0;
         if (this.units) return this.units(count);
         return count;
     }
 
     val() {
         return this.value;
+    }
+
+    n() {
+        return this.count;
     }
 }
