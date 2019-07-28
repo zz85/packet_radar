@@ -1,7 +1,8 @@
 class CircularBuffer {
-    constructor(size) {
+    constructor(size, init) {
         size = size || 100;
         this.buffer = new Array(size);
+        this.buffer.fill(init);
         this.size = size;
         this.pointer = 0;
     }
@@ -20,6 +21,13 @@ class CircularBuffer {
         }
 
         return items;
+    }
+
+    forEach(func) {
+        var size = this.size;
+        for (var i = size + this.pointer; i > this.pointer; i--) {
+            func(this.buffer[i % size]);
+        }
     }
 }
 

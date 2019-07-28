@@ -36,7 +36,52 @@
         // TODO fix this
         var local_ip4 = '192.168.0.10';
         var local_ip6 = '2601:602:9100:2130:894f:d24f:d838:8851';
-        // 2601:602:9100:2130:1c90:17fe:6881:7a7
+
+
+        class WidgetCanvas {
+            constructor(w, h) {
+                const canvas = document.createElement('canvas');
+                const dpr = devicePixelRatio;
+                canvas.width = w * dpr;
+                canvas.height = h * dpr;
+                canvas.style.width = w;
+                canvas.style.height = h;
+
+                const ctx = canvas.getContext('2d');
+                this.dom = canvas;
+                this.ctx = ctx;
+                this.w = w;
+                this.h = h;
+                ctx.scale(dpr, dpr);
+
+                this.nodes = [];
+            }
+
+            render() {
+                const { ctx, w, h, nodes } = this;
+                ctx.save();
+                ctx.clearRect(0, 0, w, h);
+
+                ctx.beginPath();
+                ctx.moveTo(w, h);
+                var x = 0;
+                var max = 0;
+                bytesBuffer.forEach((v) => {
+                    max = Math.max(max, v);
+                })
+
+                bytesBuffer.forEach((v) => {
+                    ctx.lineTo(w - x / bytesBuffer.size * w, h - v / max * h * 0.9)
+                    x++;
+                });
+
+                ctx.stroke();
+
+                ctx.fillText(formatBytes(max), 20, 20);
+                ctx.restore();
+            }
+        }
+
 
         function createDiv(label) {
             var div = document.createElement('div');
@@ -68,7 +113,8 @@
             return number.toFixed(3) + ' TB';
         }
 
-        const INTERVAL = 3000;
+        const INTERVAL = 5000; // 1 3 5
+        // mac network activity monitor uses 5 seconds
 
         function updateStats() {
             var now = Date.now();
@@ -78,7 +124,7 @@
             // updates counter every 2 seconds
             packet_count_label.innerHTML = (packet_count.reset() * PER_SEC).toFixed(2) + ' packets / second';
 
-            var bytes = byte_count.reset();
+            var bytes = counter.get('byte_count').reset();
             var bps = (bytes * PER_SEC);
             byte_count_label.innerHTML = formatBytes(bps) + ' / second';
 
@@ -101,6 +147,7 @@
 
             packet_count.inc();
             byte_count.inc(len);
+            counter.inc('byte_count', len);
 
             if (src === local_ip4 || src  === local_ip6) {
                 bytes_out.inc(len);
@@ -110,6 +157,16 @@
                 all_counter.inc('all_bytes_in', len);
             }
         });
+
+        var c = new WidgetCanvas(400, 200);
+        document.body.appendChild(c.dom);
+        var bytesBuffer = new CircularBuffer(100, 0);
+
+        setInterval(() => {
+            var count = byte_count.reset();
+            bytesBuffer.put(count);
+            c.render();
+        }, 5000);
 
         // IDEAS
         // use different internval (1s, 3s, 10s) or use exponential decaying/moving average
