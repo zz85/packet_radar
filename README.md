@@ -1,11 +1,19 @@
 # Packet Radar
 
-Packet Radar is an experimental weekend project for visualizing network traffic.
+Packet Radar is a realtime network traffic visualization experiment.
 
-It is a project for
+It uses pcap to capture packets and displays the information in various ways.
+
+- packet fight viz - visualizes and animates packets transferring between hosts. 
+- packet stats - a dashboard showing real-time network telemetry like data rates.
+- packet tail - a simple packet log viwer
+
+This started as a weekend project project for
 - playing around with rust
 - playing around with understanding packets
 - playing around with visualizations, animations and simulations
+
+If you like this, you may also be interested in [Space Rader](https://github.com/zz85/space-radar), a disk space visualization app.
 
 Server uses nightly rust, UI is done with Canvas + JS.
 

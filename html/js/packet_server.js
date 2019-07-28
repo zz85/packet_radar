@@ -43,7 +43,7 @@ function connect_packet_server(handler) {
             handler(data);
             buffer.put(data);
         } catch (e) {
-            console.log('error', m);
+            console.log('error', m, e);
         }
     }
     ws.onopen = () => console.log('connected');
