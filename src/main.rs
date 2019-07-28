@@ -21,6 +21,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+const CAPTURE_TCP:bool = true;
+const DEBUG:bool = false;
+
 struct PacketInfo {
     host: String,
 }
@@ -82,10 +85,12 @@ fn cap(tx: Sender<OwnedMessage>) {
         .unwrap()
         .timeout(1000)
         .promisc(true)
-        .snaplen(5000)
+        // .snaplen(5000)
         .open()
-        // .filter("udp")
         .unwrap();
+
+    // does a bpf filter
+    // cap.filter(&"udp").unwrap();
 
     loop {
         match cap.next() {
@@ -180,12 +185,10 @@ fn handle_udp_packet(
     packet: &[u8],
     tx: &Sender<OwnedMessage>,
 ) {
-    // tx.send(OwnedMessage::Text("hello".to_string())).unwrap();
-
     // let dest_host = lookup_addr(&destination).unwrap();
     // println!("Name look up from:  {} to {}", destination, dest_host);
     let udp = UdpPacket::new(packet);
-    println!("Protocol: UDP, Source: {}, Destination: {}", source, destination);
+    // println!("Protocol: UDP, Source: {}, Destination: {}", source, destination);
 
     if let Some(udp) = udp {
         let p = json!({
@@ -198,18 +201,20 @@ fn handle_udp_packet(
                 // format!("{}:{}", source, udp.get_source()),
         });
 
-        println!("{}", p.to_string());
+        // println!("{}", p.to_string());
         tx.send(OwnedMessage::Text(p.to_string())).unwrap();
 
-        println!(
-            "[{}]: UDP Packet: {}:{} > {}:{}; length: {}",
-            interface_name,
-            source,
-            udp.get_source(),
-            destination,
-            udp.get_destination(),
-            udp.get_length()
-        );
+        if DEBUG {
+            println!(
+                "[{}]: UDP Packet: {}:{} > {}:{}; length: {}",
+                interface_name,
+                source,
+                udp.get_source(),
+                destination,
+                udp.get_destination(),
+                udp.get_length()
+            );
+        }
 
         // start parsing
         let payload = udp.payload();
@@ -228,15 +233,17 @@ fn handle_tcp_packet(
 ) {
     let tcp = TcpPacket::new(packet);
     if let Some(tcp) = tcp {
-        println!(
-            "[{}]: TCP Packet: {}:{} > {}:{}; length: {}",
-            interface_name,
-            source,
-            tcp.get_source(),
-            destination,
-            tcp.get_destination(),
-            packet.len()
-        );
+        if DEBUG {
+            println!(
+                "[{}]: TCP Packet: {}:{} > {}:{}; length: {}",
+                interface_name,
+                source,
+                tcp.get_source(),
+                destination,
+                tcp.get_destination(),
+                packet.len()
+            );
+        }
 
         let p = json!({
             "len": tcp.packet_size(),
@@ -266,7 +273,7 @@ fn handle_transport_protocol(
             handle_udp_packet(interface_name, source, destination, packet, tx)
         }
         IpNextHeaderProtocols::Tcp => {
-            handle_tcp_packet(interface_name, source, destination, packet, tx)
+            if CAPTURE_TCP { handle_tcp_packet(interface_name, source, destination, packet, tx) }
         }
         IpNextHeaderProtocols::Icmp => {
             // handle_icmp_packet(interface_name, source, destination, packet)
