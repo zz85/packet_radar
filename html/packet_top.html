@@ -1,0 +1,68 @@
+<html>
+<body>
+<style>
+        body {
+            font-family: monospace;
+        }
+        #holder {
+            width: 100%;
+            height: 100%;
+        }
+
+        .item {
+            width: 100%;
+            height: 20px;   
+        }
+    </style>
+
+    <script src="js/packet_server.js"></script>
+    <script src="js/stats.js"></script>
+    <script src="js/links.js"></script>
+
+    <h2>Top</h2>
+    <div id="holder">
+    
+    <script>
+        /*
+        This script examaines the relationship of packet transfer between hosts,
+        gathers stats eg. bandwidth between the links, and allow the user interface
+        to order the list by usage.
+        */
+        var links = new Links();
+
+        connect_packet_server(data => {
+            const { src, dest, len } = data;
+
+            var key = Links.key(src, dest);
+            var link = links.findOrCreateLink(key);
+            link.update(len);
+        });
+
+        var divs = Array(50).fill(0).map(_ => {
+            var div = document.createElement('div');
+            holder.appendChild(div);
+
+            return div;
+        });
+
+        setInterval(() => {
+            var items = [...links.all_links.values()]
+            items.forEach(item => item.calc());
+
+            items.sort((a, b) => b.rx_bytes - a.rx_bytes);
+
+            divs.forEach((div, i) => {
+                var item = items[i];
+                if (item) {
+                    div.innerHTML = `${item.name} - ${item.rx_bytes} - ${item.rx_packets}`
+                }
+                else {
+                    div.innerHTML = '';
+                }
+            });
+
+            links.cleanup();
+        }, 1000);
+    </script>
+</body>
+</html>
