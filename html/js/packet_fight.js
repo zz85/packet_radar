@@ -77,6 +77,7 @@ class qNode {
                 n.y += dy * 0.15;
 
                 n.life++;
+                n.r -= 0.1;
 
                 // when it reaches target, or simply remove when it's ttl has died.
                 if (Math.abs(dx) / 2 < n.target.r && Math.abs(dy) / 2 < n.target.r
@@ -186,24 +187,33 @@ class qCanvas {
 
         var nodeA, nodeB;
 
-        for (let key of manager.links.all_links.keys()) {
-            const [a, b] = key.split('_');
-            nodeA = manager.getHost(a);
-            nodeB = manager.getHost(b);
-            if (nodeA && nodeB) {
-                nodeA.react(nodeB, 808, 3);
-                nodeB.react(nodeA, 808, 3);
-                nodeA.attract(nodeB);
-                nodeB.attract(nodeA);
-            }
+        // fake gravity to bring stuff together
+        nodeB = { x: 0, y: 0 }
+        for (var i = 0; i < nodes.length; i++) {
+            nodeA = nodes[i];
+            nodeA.react(nodeB);
         }
 
+        // keep things slightly apart
         for (var i = 0; i < nodes.length; i++) {
             nodeA = nodes[i];
             for (var j = i + 1; j < nodes.length; j++) {
                 nodeB = nodes[j];
                 nodeA.react(nodeB);
                 nodeB.react(nodeA);
+            }
+        }
+
+        // charge between links
+        for (let key of manager.links.all_links.keys()) {
+            const [a, b] = key.split('_');
+            nodeA = manager.getHost(a);
+            nodeB = manager.getHost(b);
+            if (nodeA && nodeB) {
+                nodeA.react(nodeB, 808, 4);
+                nodeB.react(nodeA, 808, 3);
+                nodeA.attract(nodeB);
+                nodeB.attract(nodeA);
             }
         }
 
@@ -233,9 +243,10 @@ class qCanvas {
         this.viewx += (ax - this.viewx) * 0.65;
         this.viewy += (ay - this.viewy) * 0.65;
 
-        ctx.translate(w / 2 - this.viewx, h / 2 - this.viewy);
+        // ctx.translate(w / 2 - this.viewx, h / 2 - this.viewy);
+        ctx.translate(w / 2 - ax, h / 2 - ay);
 
-        // ctx.scale(this.zoom, this.zoom);
+        ctx.scale(this.zoom, this.zoom);
 
         nodes.forEach(node => node.render(ctx))
 
@@ -264,6 +275,7 @@ class EventManager {
         // keep track of nodes ttl, remove nodes when idle activity is detected
         canvas.nodes.forEach(node => {
             if (!hosts.has(node.label)) {
+                // console.log('remove ', node.label);
                 this.removeHost(node.label);
             }
         })
