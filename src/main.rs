@@ -9,7 +9,11 @@ use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
 use pnet::packet::*;
+
+use std::convert::TryFrom;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::sync::Server;
@@ -28,8 +32,14 @@ const STATS:bool = false;
 use dipstick::{AtomicBucket, Stream, ScheduleFlush, InputScope, stats_all, Output};
 use std::io;
 
+#[derive(Serialize, Deserialize, Debug)]
 struct PacketInfo {
-    host: String,
+    len: u16,
+    src: String,
+    dest: String,
+    src_port: u16,
+    dest_port: u16,
+    // todo type?
 }
 
 /**
@@ -58,9 +68,45 @@ fn main() {
         let clients = clients.clone();
         thread::spawn(move || {
             let ws = connection.accept().unwrap();
-            let (_rx, tx) = ws.split().unwrap();
+            let ip = ws.peer_addr().unwrap();
+            let (mut rx, mut tx) = ws.split().unwrap();
 
+            // add writer stream to shared vec
             clients.write().unwrap().push(tx);
+
+            for message in rx.incoming_messages() {
+				let message = message.unwrap();
+
+				match message {
+					OwnedMessage::Close(_) => {
+						// let message = OwnedMessage::Close(None);
+						// tx.send_message(&message).unwrap();
+						println!("Client {} disconnected", ip);
+						return;
+					},
+                    OwnedMessage::Text(text) => {
+                        // let parsed = json::parse(text);
+
+
+                        // TODO json parse text here
+
+                        // handle look up address
+                        // let dest_host = lookup_addr(&destination).unwrap();
+                        // println!("Name look up from: {} to {}", destination, dest_host);
+
+                        // handle filtering
+
+                        // handle local addresses
+
+                    },
+                    OwnedMessage::Binary(buf) => {
+
+                    },
+					others => {
+                        println!("ok {:?}", others);
+                    },
+				}
+			}
         });
     }
 }
@@ -81,11 +127,13 @@ fn cap(tx: Sender<OwnedMessage>) {
     println!("Devices {:?}", Device::list());
 
     let device = Device::lookup().unwrap();
-    println!("Lookup device {:?}", device);
+    println!("Default device {:?}", device);
     let name =
         device.name.as_str();
         // "any";
         // "lo0";
+
+    println!("Capturing on device {:?}", name);
 
     let mut cap = Capture::from_device(name)
         .unwrap()
@@ -212,24 +260,19 @@ fn handle_udp_packet(
     packet: &[u8],
     tx: &Sender<OwnedMessage>,
 ) {
-    // let dest_host = lookup_addr(&destination).unwrap();
-    // println!("Name look up from:  {} to {}", destination, dest_host);
     let udp = UdpPacket::new(packet);
-    // println!("Protocol: UDP, Source: {}, Destination: {}", source, destination);
 
     if let Some(udp) = udp {
-        let p = json!({
-            "len": udp.get_length(),
-            "dest":
-                destination,
-                // format!("{}:{}", destination, udp.get_destination()),
-            "src":
-                source,
-                // format!("{}:{}", source, udp.get_source()),
-        });
+        let packet_info = PacketInfo {
+            len: udp.get_length(),
+            dest: destination.to_string(),
+            src: source.to_string(),
+            dest_port: udp.get_destination(),
+            src_port: udp.get_source()
+        };
 
-        // println!("{}", p.to_string());
-        tx.send(OwnedMessage::Text(p.to_string())).unwrap();
+        let payload = serde_json::to_string(&packet_info).unwrap();
+        tx.send(OwnedMessage::Text(payload)).unwrap();
 
         if DEBUG {
             println!(
@@ -245,7 +288,7 @@ fn handle_udp_packet(
 
         // start parsing
         let payload = udp.payload();
-    // println!("Payload {:?}", udp.payload());
+        // println!("Payload {:?}", udp.payload());
     } else {
         println!("[{}]: Malformed UDP Packet", interface_name);
     }
@@ -272,13 +315,16 @@ fn handle_tcp_packet(
             );
         }
 
-        let p = json!({
-            "len": tcp.packet_size(),
-            "dest": destination,
-            "src": source,
-        });
+        let packet_info = PacketInfo {
+            len: u16::try_from(tcp.packet_size()).unwrap(),
+            dest: destination.to_string(),
+            src: source.to_string(),
+            dest_port: tcp.get_destination(),
+            src_port: tcp.get_source()
+        };
 
-        tx.send(OwnedMessage::Text(p.to_string())).unwrap();
+        let payload = serde_json::to_string(&packet_info).unwrap();
+        tx.send(OwnedMessage::Text(payload)).unwrap();
     } else {
         println!("[{}]: Malformed TCP Packet", interface_name);
     }
