@@ -42,6 +42,13 @@ struct PacketInfo {
     // todo type?
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct ClientRequest {
+    req: String,
+    r#type: String,
+    value: String,
+}
+
 /**
  * This file starts a packet capture and a websocket server
  * Events are forwarded to connected clients
@@ -66,13 +73,14 @@ fn main() {
 
     for connection in server.filter_map(Result::ok) {
         let clients = clients.clone();
+
         thread::spawn(move || {
             let ws = connection.accept().unwrap();
             let ip = ws.peer_addr().unwrap();
-            let (mut rx, mut tx) = ws.split().unwrap();
+            let (mut rx, mut _tx) = ws.split().unwrap();
 
             // add writer stream to shared vec
-            clients.write().unwrap().push(tx);
+            clients.write().unwrap().push(_tx);
 
             for message in rx.incoming_messages() {
 				let message = message.unwrap();
@@ -85,14 +93,35 @@ fn main() {
 						return;
 					},
                     OwnedMessage::Text(text) => {
-                        // let parsed = json::parse(text);
+                        // json parse request here
+                        let data: ClientRequest = serde_json::from_str(&text).unwrap();
 
+                        let req = data.req;
+                        println!("data req: {}, val: {}", req, data.value);
 
-                        // TODO json parse text here
+                        match req.as_ref() {
+                            "lookup" => {
+                                // handle look up address
+                                let ip = data.value;
+                                let hostname = lookup_addr(&ip.parse::<IpAddr>().unwrap()).unwrap();
+                                // println!("Name look up from: {} to {}", destination, hostname);
 
-                        // handle look up address
-                        // let dest_host = lookup_addr(&destination).unwrap();
-                        // println!("Name look up from: {} to {}", destination, dest_host);
+                                let p = json!({
+                                    "type": "lookup_addr",
+                                    "ip": ip,
+                                    "hostname": hostname,
+                                }).to_string();
+
+                                let message = OwnedMessage::Text(p);
+                                clients
+                                    .write()
+                                    .unwrap()
+                                    .drain_filter(|c| c.send_message(&message).is_err());
+                            },
+                            _ => {
+
+                            }
+                        }
 
                         // handle filtering
 
