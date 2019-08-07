@@ -118,6 +118,30 @@ fn main() {
                                     .unwrap()
                                     .drain_filter(|c| c.send_message(&message).is_err());
                             },
+                            "local_addr" => {
+                                let interfaces = pnet::datalink::interfaces();
+                                for interface in interfaces {
+                                    println!("Interface {:?}", interface.ips);
+
+                                    for ip in interface.ips {
+                                        let src = ip.ip();
+
+                                        let p = json!({
+                                            "type": "local_addr",
+                                            "ip": src,
+                                        }).to_string();
+
+                                        let message = OwnedMessage::Text(p);
+                                        clients
+                                            .write()
+                                            .unwrap()
+                                            .drain_filter(|c| c.send_message(&message).is_err());
+
+                                    }
+
+                                    
+                                }
+                            },
                             _ => {
 
                             }
@@ -157,6 +181,8 @@ fn cap(tx: Sender<OwnedMessage>) {
 
     let device = Device::lookup().unwrap();
     println!("Default device {:?}", device);
+
+
     let name =
         device.name.as_str();
         // "any";

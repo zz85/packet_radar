@@ -6,12 +6,14 @@ It uses pcap to capture packets and displays the information in various ways.
 
 - packet fight viz - visualizes and animates packets transferring between hosts. 
 - packet stats - a dashboard showing real-time network telemetry like data rates.
+- packet top - shows top connections
 - packet tail - a simple packet log viwer
-- packet top
 
 TODO
-- [ ] DNS resolution
-- [ ] Find local address
+- [x] DNS resolution
+- [x] Find local address
+- [ ] Whois
+- [ ] Mtr
 
 This started as a weekend project project for
 - playing around with rust
