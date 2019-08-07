@@ -51,7 +51,10 @@ class qNode {
     isSending(target, size) {
         var packet = new qNode(this.x + rand(this.r  * 4), this.y + rand(this.r * 4));
         size = size || 100;
-        packet.r = Math.sqrt(size);
+        // packet.r = Math.sqrt(size);
+
+        // sizing 5, 10, 15, 20
+        packet.r = 5 * Math.max(Math.log(size) / Math.log(10), 0.5);
         packet.target = target;
         packet.life = 0;
         if (!this.fires) this.fires = [];
@@ -59,7 +62,7 @@ class qNode {
     }
 
     // physics update
-    update() {
+    update(delta) {
         if (this.fires) {
             this.fires.forEach(n => {
                 var dx = n.target.x - n.x;
@@ -72,15 +75,25 @@ class qNode {
                 n.y += dy / amp * 40;
                 */
 
-                // use easing function
-                n.x += dx * 0.15;
-                n.y += dy * 0.15;
+                // // use easing function
+                // n.x += dx * 0.15;
+                // n.y += dy * 0.15;
+
+                /// take max life = 200
+                var k = (n.life / 200);
+                k = 1 - k;
+                k = 1 - k * k * k;
+
+                n.x += dx * k;
+                n.y += dy * k;
 
                 n.life++;
-                n.r -= 0.1;
+
+                // animate size?
+                // if (n.r > 1) n.r -= 4 * delta;
 
                 // when it reaches target, or simply remove when it's ttl has died.
-                if (Math.abs(dx) / 2 < n.target.r && Math.abs(dy) / 2 < n.target.r
+                if (Math.abs(dx) / 2 < 4 && Math.abs(dy) / 2 < 4
                     || n.life > 1000
                 ) {
                     this.fires.splice(this.fires.indexOf(n));
@@ -88,51 +101,66 @@ class qNode {
             })
         }
 
-        this.x += this.dx;
-        this.y += this.dy;
+        this.x += this.dx * delta;
+        this.y += this.dy * delta;
+
+        var DAMP = 0.1;
         // damping
-        this.dx *= 0.9;
-        this.dy *= 0.9;
+        this.dx *= (1 - DAMP * delta);
+        this.dy *= (1 - DAMP * delta);
         if (this.dx < 0.001) this.dx = 0;
         if (this.dy < 0.001) this.dy = 0;
     }
 
-    react(node, spread, force) {
-        force = force || 2;
-        const dx = node.x - this.x;
-        const dy = node.y - this.y;
-        const d = dx * dx + dy * dy;
-
-        const minSpread = spread || 150;
-        const minSpread2 = minSpread * minSpread;
-        if (d < minSpread2) {
-            // push apart
-            this.dx -= Math.sign(dx) * (minSpread2 - d) / minSpread2 * force;
-            this.dy -= Math.sign(dy) * (minSpread2 - d) / minSpread2 * force;
-        }
-
-        // this.attract(node);
-    }
-
-    attract(node) {
+    react(delta, node, spread, force) {
+        // push apart
+        force = force || 1000;
         const dx = node.x - this.x;
         const dy = node.y - this.y;
         const d2 = dx * dx + dy * dy;
+        if (d2 === 0) return;
+
+        const minSpread = spread || 150;
+        const minSpread2 = minSpread * minSpread;
+        // if (d2 > minSpread2) return;
+
         const d = Math.pow(d2, 0.5);
+        if (d == 0) d = 0.000001;
+        var f = force / d2;
 
-        const target = 100;
+        if (f > 100) f = 100;
 
-        // if (d > target) {
-            // TODO check attraction equation
-            var pull = d / target * 1;
+        this.dx -= dx / d * f * delta * 100;
+        this.dy -= dy / d * f * delta * 100;
 
-            // pull together
-            this.dx += dx / d * pull;
-            this.dy += dy / d * pull;
-        // }
+    }
+
+    attract(delta, node) {
+        const dx = node.x - this.x;
+        const dy = node.y - this.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 === 0) return;
+
+        const target = 1000;
+        // if (d2 < target * target) return;
+
+        if (d2 < 10) d2 = 10;
+
+        const d = Math.pow(d2, 0.5);
+        
+        // TODO check attraction equation
+        var pull = target / d2 * 100; // mass
+
+        // pull together
+        this.dx -= dx / d * pull * delta;
+        this.dy -= dy / d * pull * delta;
+        var m = dx / d * pull * delta;
+        if (Math.abs(m) > 1) console.log(m);
+        
     }
 
     render(ctx) {
+        ctx.strokeStyle = '#fff'
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
         ctx.stroke();
@@ -141,7 +169,21 @@ class qNode {
             this.fires.forEach(f => f.render(ctx));
         }
 
-        if (this.label) ctx.fillText(this.label, this.x, this.y);
+        var label = this.label;
+        if (label) {
+            // hack, this should be done in a better way
+            if (is_local(label)) label = '*** ' + label + ' ***' 
+            label = lookup(label) || label
+            ctx.fillText(label, this.x, this.y);
+        }
+
+        // debug vectors
+        ctx.beginPath();
+        ctx.strokeStyle = '#f00'
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x + this.dx * 10, this.y + this.dy * 10);
+        ctx.stroke();
     }
 }
 
@@ -182,7 +224,7 @@ class qCanvas {
         this.nodes.splice(this.nodes.indexOf(node), 1);
     }
 
-    simulate() {
+    simulate(delta) {
         const nodes = this.nodes;
 
         var nodeA, nodeB;
@@ -191,33 +233,35 @@ class qCanvas {
         nodeB = { x: 0, y: 0 }
         for (var i = 0; i < nodes.length; i++) {
             nodeA = nodes[i];
-            nodeA.react(nodeB);
+            // nodeA.attract(delta, nodeB);
+            // nodeA.react(delta, nodeB, 150, -1000);
+            
         }
 
         // keep things slightly apart
-        for (var i = 0; i < nodes.length; i++) {
-            nodeA = nodes[i];
-            for (var j = i + 1; j < nodes.length; j++) {
-                nodeB = nodes[j];
-                nodeA.react(nodeB);
-                nodeB.react(nodeA);
-            }
-        }
+        // for (var i = 0; i < nodes.length; i++) {
+        //     nodeA = nodes[i];
+        //     for (var j = i + 1; j < nodes.length; j++) {
+        //         nodeB = nodes[j];
+        //         nodeA.react(delta, nodeB);
+        //         nodeB.react(delta, nodeA);
+        //     }
+        // }
 
         // charge between links
         for (let key of manager.links.all_links.keys()) {
             const [a, b] = key.split('_');
             nodeA = manager.getHost(a);
             nodeB = manager.getHost(b);
-            if (nodeA && nodeB) {
-                nodeA.react(nodeB, 808, 4);
-                nodeB.react(nodeA, 808, 3);
-                nodeA.attract(nodeB);
-                nodeB.attract(nodeA);
-            }
+            // if (nodeA && nodeB) {
+            //     nodeA.react(nodeB, 808, 1000);
+            //     nodeB.react(nodeA, 808, 1000);
+            //     nodeA.attract(delta, nodeB);
+            //     nodeB.attract(delta, nodeA);
+            // }
         }
 
-        canvas.nodes.forEach(node => node.update());
+        canvas.nodes.forEach(node => node.update(delta));
     }
 
     render() {
@@ -250,11 +294,20 @@ class qCanvas {
 
         nodes.forEach(node => node.render(ctx))
 
+
+        // debug center point
+        ctx.beginPath();
+        ctx.fillStyle = '#0f0'
+        ctx.arc(0, 0, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+
         ctx.restore();
         // debug labels
         ctx.fillText(`Nodes: ${nodes.length}\n
         Packets in flight: ${packets}
         `, w - w/5, h - h/5);
+        
     }
 }
 
@@ -305,7 +358,10 @@ class EventManager {
         link.update(size);
 
         // TODO if a and b are too close, defer animation
-        setTimeout(() => a.isSending(b, size), 100);
+        // setTimeout(() => a.isSending(b, size), 100);
+
+
+        a.isSending(b, size)
     }
 
     getHost(host) {
@@ -321,6 +377,15 @@ class EventManager {
         }
         var node = new qNode(tx, ty);
         node.label = host;
+
+        // pin
+        if (is_local(host)) {
+            node.x = -200
+            node.y = rand(500);
+        } else {
+            node.x = 200
+            node.y = rand(500);
+        }
 
         canvas.add(node);
         this.hosts.set(host, node);
@@ -343,23 +408,15 @@ function rand(n) {
 canvas = new qCanvas();
 manager = new EventManager();
 
-node1 = new qNode(rand(100), rand(100))
-node2 = new qNode(rand(100), rand(100))
-node3 = new qNode(rand(100), rand(100))
-
-// canvas.add(node1);
-// canvas.add(node2);
-// canvas.add(node3);
-
-// for (var i = 0; i < 4; i++) {
-//     canvas.add(new qNode(rand(100), rand(100)));
-// }
-
 document.body.appendChild(canvas.dom);
 
+var last_step = Date.now();
 setInterval(()  => {
+    var now = Date.now();
+    var diff = (now - last_step) / 1000;
+    last_step = now;
     // simulate
-    canvas.simulate();
+    canvas.simulate(diff);
 
     // render
     canvas.render();

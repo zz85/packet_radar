@@ -1,0 +1,31 @@
+<html>
+<body>
+<style>
+    body {
+        background: #000;
+    }
+</style>
+<script src="js/stats.js"></script>
+<script src="js/links.js"></script>
+<script src="js/packet_fight.js"></script>
+<script src="js/packet_server.js"></script>
+<script>
+    // connect_packet_server(data => manager.process(data));
+
+    // nodes = [];
+    // for (var i = 0; i < 4; i++) {
+    //     node = new qNode(rand(100), rand(100))
+    //     nodes.push(node)
+    //     node.label = String.fromCharCode('A'.charCodeAt(0) + i)
+
+    //     canvas.add(node);
+    // }
+
+    manager.packet('A', 'B', 10);
+    manager.packet('C', 'D', 50);
+    manager.packet('E', 'F', 150);
+
+
+</script>
+</body>
+</html>
