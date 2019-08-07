@@ -61,7 +61,7 @@ function connect_packet_server(handler) {
 
             check_host(src);
             check_host(dest);
-             
+
             handler(data);
             buffer.put(data);
         } catch (e) {
@@ -94,11 +94,14 @@ function check_host(ip) {
     if (!ips.has(ip)) {
         ips.set(ip, null);
 
-        console.log('query ', ip);
         query_lookup(ip);
     }
 }
 
 function is_local(ip) {
     return local_ips.has(ip);
+}
+
+function lookup(ip) {
+    return ips.get(ip);
 }

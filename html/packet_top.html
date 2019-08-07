@@ -53,12 +53,23 @@
 
             divs.forEach((div, i) => {
                 var item = items[i];
-                if (item) {
-                    div.innerHTML = `${item.name} - ${item.rx_bytes} - ${item.rx_packets}`
-                }
-                else {
+
+                if (!item) {
                     div.innerHTML = '';
+                    return;
                 }
+
+                var [a, b] = item.name.split('_');
+                a = lookup(a) || a;
+                b = lookup(b) || b;
+
+                if (!is_local(a)) {
+                    var c = a;
+                    a = b;
+                    b = c;
+                }
+
+                div.innerHTML = `${a} ... ${b} - ${item.rx_bytes}bytes - ${item.rx_packets}`
             });
 
             links.cleanup();
