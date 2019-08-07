@@ -23,45 +23,23 @@
     <div id="holder">
     
     <script>
-
-        var ips = new Map();
-        var local_ips = new Set();
+        var counts = new CountManager();
         
-        function check_host(ip) {
-            if (!ips.has(ip)) {
-                ips.set(ip, null);
-
-                console.log('query ', ip);
-                query_lookup(ip);
-            }
-        }
-
-        function query_lookup(ip) {
-            ws.send(JSON.stringify({req: 'lookup', value: ip, type: ''}));
-        }
-
-        function query_host_ip() {
-            ws.send(JSON.stringify({req: 'local_addr', value: '', type: ''}))
-        }
-
         connect_packet_server(data => {
-            if (data.type === 'lookup_addr') {
-                console.log(data);
-                ips.set(data.ip, data.hostname);
-                return;
-            } else if (data.type === 'local_addr') {
-                console.log('ip', data);
-                local_ips.add(data.ip);
-                return;
-            }
-            const { src, dest, len, src_port, dest_port } = data;
+           // moved to packet_server.js
 
-            check_host(src);
-            check_host(dest);
+           // query();
+
+           const { src, dest, len, src_port, dest_port } = data;
+           if (is_local(src)) {
+               // outgoing packets
+
+               counts.createInc(dest_port);
+           }
         });
 
-        setTimeout(() => {
-            query_host_ip();
+        setInterval(() => {
+            console.log(counts.resetAll());
         }, 1000);
 
     </script>

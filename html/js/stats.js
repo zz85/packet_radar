@@ -12,8 +12,25 @@ class CountManager {
         return this.get(name).inc(value);
     }
 
+    createInc(name) {
+        if (!this.labels.has(name)) {
+            this.add(name);
+        }
+
+        this.inc(name);
+    }
+
     reset(name) {
         return this.get(name).reset();
+    }
+
+    resetAll() {
+        var v = {};
+        [...this.labels].forEach(([key, value]) => {
+            v[key] = value.resetCount();
+        })
+
+        return v;
     }
 
     get(name) {

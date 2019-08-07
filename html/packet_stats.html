@@ -36,11 +36,6 @@
         counter.forEach((counter, name) => createDiv(name));
         all_counter.forEach((counter, name) => createDiv(name));
 
-        // TODO fix this
-        var local_ip4 = '192.168.0.10';
-        var local_ip6 = '2601:602:9100:2130:894f:d24f:d838:8851';
-
-
         class WidgetCanvas {
             constructor(w, h) {
                 const canvas = document.createElement('canvas');
@@ -152,7 +147,7 @@
             byte_count.inc(len);
             counter.inc('byte_count', len);
 
-            if (src === local_ip4 || src  === local_ip6) {
+            if (is_local(src)) {
                 bytes_out.inc(len);
                 all_counter.inc('all_bytes_out', len);
             } else {
@@ -177,6 +172,8 @@
         // line graph
         // filter or breakdown
         // make dashboard configurable + bindings to counters
+
+        // TODO top/bottom chart, radar chart, 
     </script>
 </body>
 </html>
