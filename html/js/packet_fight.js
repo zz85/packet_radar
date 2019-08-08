@@ -56,7 +56,7 @@ class qNode {
         // sizing 5, 10, 15, 20
         packet.r = 5 * Math.max(Math.log(size) / Math.log(10), 0.5);
         packet.target = target;
-        packet.life = 0;
+        packet.life = 0 + Math.random() * 50 | 0;
         if (!this.fires) this.fires = [];
         this.fires.push(packet);
     }
@@ -147,7 +147,7 @@ class qNode {
         if (d2 < 10) d2 = 10;
 
         const d = Math.pow(d2, 0.5);
-        
+
         // TODO check attraction equation
         var pull = target / d2 * 100; // mass
 
@@ -156,7 +156,7 @@ class qNode {
         this.dy -= dy / d * pull * delta;
         var m = dx / d * pull * delta;
         if (Math.abs(m) > 1) console.log(m);
-        
+
     }
 
     render(ctx) {
@@ -172,7 +172,7 @@ class qNode {
         var label = this.label;
         if (label) {
             // hack, this should be done in a better way
-            if (is_local(label)) label = '*** ' + label + ' ***' 
+            if (is_local(label)) label = '*** ' + label + ' ***'
             label = lookup(label) || label
             ctx.fillText(label, this.x, this.y);
         }
@@ -235,7 +235,7 @@ class qCanvas {
             nodeA = nodes[i];
             // nodeA.attract(delta, nodeB);
             // nodeA.react(delta, nodeB, 150, -1000);
-            
+
         }
 
         // keep things slightly apart
@@ -307,7 +307,7 @@ class qCanvas {
         ctx.fillText(`Nodes: ${nodes.length}\n
         Packets in flight: ${packets}
         `, w - w/5, h - h/5);
-        
+
     }
 }
 
@@ -318,6 +318,9 @@ class EventManager {
         setInterval(() => {
             this.cleanup()
         }, 1000);
+
+        this._inside_count = 0;
+        this._outside_count = 0;
     }
 
     cleanup() {
@@ -379,12 +382,37 @@ class EventManager {
         node.label = host;
 
         // pin
+
+        /*
+        // separate left <> right, with y randomness
         if (is_local(host)) {
             node.x = -200
             node.y = rand(500);
         } else {
             node.x = 200
             node.y = rand(500);
+        }
+        */
+
+        /*
+        // separate left <> right, with increased y
+        if (is_local(host)) {
+            node.x = -200
+            node.y = this._inside_count++ * 100
+        } else {
+            node.x = 200
+            node.y = this._outside_count++ * 100
+        }
+        */
+
+        if (is_local(host)) {
+            node.x = 0
+            node.y = this._inside_count++ * 100
+        } else {
+            var angle = this._outside_count++ / 10 * Math.PI * 2;
+
+            node.x = Math.cos(angle) * 300;
+            node.y = Math.sin(angle) * 300;
         }
 
         canvas.add(node);

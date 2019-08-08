@@ -4,16 +4,10 @@ Packet Radar is a realtime network traffic visualization experiment.
 
 It uses pcap to capture packets and displays the information in various ways.
 
-- packet fight viz - visualizes and animates packets transferring between hosts. 
+- packet fight viz - visualizes and animates packets transferring between hosts.
 - packet stats - a dashboard showing real-time network telemetry like data rates.
 - packet top - shows top connections
 - packet tail - a simple packet log viwer
-
-TODO
-- [x] DNS resolution
-- [x] Find local address
-- [ ] Whois
-- [ ] Mtr
 
 This started as a weekend project project for
 - playing around with rust
@@ -59,3 +53,15 @@ open `html/packet_viz.html` in your browser
 
 - Joshua Koo
 - Yang Bin Kwok
+
+IDEAs / TODO
+- [x] DNS resolution
+- [x] Find local address
+- [ ] Whois
+- [ ] Mtr
+- [ ] Traffic categorization (UDP, TCP, TLS)
+- [ ] DNS capture
+- [ ] RTT
+- [ ] Packet replay
+- [ ] Terminal Interfaces
+- [ ] Visual traceroute
