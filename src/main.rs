@@ -39,14 +39,20 @@ struct PacketInfo {
     dest: String,
     src_port: u16,
     dest_port: u16,
-    // todo type?
+    t: String, // type: t for tcp, u for udp
+    // todo timestamp + id
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ClientRequest {
     req: String,
+    #[serde(default = "default_type")]
     r#type: String,
     value: String,
+}
+
+fn default_type() -> String {
+    "".to_string()
 }
 
 /**
@@ -148,8 +154,7 @@ fn main() {
                         }
 
                         // handle filtering
-
-                        // handle local addresses
+                        // handle get buffers
 
                     },
                     OwnedMessage::Binary(buf) => {
@@ -181,7 +186,6 @@ fn cap(tx: Sender<OwnedMessage>) {
 
     let device = Device::lookup().unwrap();
     println!("Default device {:?}", device);
-
 
     let name =
         device.name.as_str();
@@ -235,9 +239,9 @@ fn cap(tx: Sender<OwnedMessage>) {
                 // .ts
 
                 let ether = EthernetPacket::new(&packet).unwrap();
-                let etherType = ether.get_ethertype();
+                let ether_type = ether.get_ethertype();
 
-                match etherType {
+                match ether_type {
                     EtherTypes::Ipv4 => {
                         // print!("IPV4 ");
                         handle_ipv4_packet("meow", &ether, &tx);
@@ -323,7 +327,8 @@ fn handle_udp_packet(
             dest: destination.to_string(),
             src: source.to_string(),
             dest_port: udp.get_destination(),
-            src_port: udp.get_source()
+            src_port: udp.get_source(),
+            t: String::from("u")
         };
 
         let payload = serde_json::to_string(&packet_info).unwrap();
@@ -375,7 +380,8 @@ fn handle_tcp_packet(
             dest: destination.to_string(),
             src: source.to_string(),
             dest_port: tcp.get_destination(),
-            src_port: tcp.get_source()
+            src_port: tcp.get_source(),
+            t: String::from("t")
         };
 
         let payload = serde_json::to_string(&packet_info).unwrap();

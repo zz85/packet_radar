@@ -44,7 +44,7 @@ class qNode {
         // display attr
         this.r = 40;
         this.label = label || '';
-
+        this.color = '';
     }
 
     // shoots packet
@@ -59,6 +59,8 @@ class qNode {
         packet.life = 0 + Math.random() * 50 | 0;
         if (!this.fires) this.fires = [];
         this.fires.push(packet);
+
+        return packet;
     }
 
     // physics update
@@ -104,15 +106,15 @@ class qNode {
         this.x += this.dx * delta;
         this.y += this.dy * delta;
 
-        var DAMP = 0.1;
+        var DAMP = 0.4;
         // damping
         this.dx *= (1 - DAMP * delta);
         this.dy *= (1 - DAMP * delta);
-        if (this.dx < 0.001) this.dx = 0;
-        if (this.dy < 0.001) this.dy = 0;
+        if (Math.abs(this.dx) < 0.001) this.dx = 0;
+        if (Math.abs(this.dy) < 0.001) this.dy = 0;
     }
 
-    react(delta, node, spread, force) {
+    react(delta, node, spread, force, maxSpread) {
         // push apart
         force = force || 1000;
         const dx = node.x - this.x;
@@ -122,13 +124,16 @@ class qNode {
 
         const minSpread = spread || 150;
         const minSpread2 = minSpread * minSpread;
-        // if (d2 > minSpread2) return;
+        maxSpread = 10000;
+        const maxSpread2 = maxSpread * maxSpread;
+
+        if (d2 > minSpread2) return;
 
         const d = Math.pow(d2, 0.5);
-        if (d == 0) d = 0.000001;
+        // if (d == 0) d = 0.000001;
         var f = force / d2;
 
-        if (f > 100) f = 100;
+        // if (f > 100) f = 100;
 
         this.dx -= dx / d * f * delta * 100;
         this.dy -= dy / d * f * delta * 100;
@@ -138,13 +143,13 @@ class qNode {
     attract(delta, node) {
         const dx = node.x - this.x;
         const dy = node.y - this.y;
-        const d2 = dx * dx + dy * dy;
+
+        let d2 = dx * dx + dy * dy;
         if (d2 === 0) return;
 
         const target = 1000;
         // if (d2 < target * target) return;
-
-        if (d2 < 10) d2 = 10;
+        if (d2 < 100) d2 = 10000;
 
         const d = Math.pow(d2, 0.5);
 
@@ -152,18 +157,26 @@ class qNode {
         var pull = target / d2 * 100; // mass
 
         // pull together
-        this.dx -= dx / d * pull * delta;
-        this.dy -= dy / d * pull * delta;
-        var m = dx / d * pull * delta;
-        if (Math.abs(m) > 1) console.log(m);
+        this.dx += dx / d * pull * delta;
+        this.dy += dy / d * pull * delta;
+
+        // var m = dx / d * pull * delta;
+        // if (Math.abs(m) > 1) console.log(m);
 
     }
 
     render(ctx) {
-        ctx.strokeStyle = '#fff'
+        ctx.save();
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-        ctx.stroke();
+
+        if (this.color) {
+            ctx.fillStyle = this.color;
+            ctx.fill();
+        } else {
+            ctx.strokeStyle = '#fff'
+            ctx.stroke();
+        }
 
         if (this.fires) {
             this.fires.forEach(f => f.render(ctx));
@@ -182,8 +195,10 @@ class qNode {
         ctx.strokeStyle = '#f00'
         ctx.beginPath();
         ctx.moveTo(this.x, this.y);
+        // if (Math.random() < 0.1) console.log(this.y, this.dy);
         ctx.lineTo(this.x + this.dx * 10, this.y + this.dy * 10);
         ctx.stroke();
+        ctx.restore();
     }
 }
 
@@ -230,35 +245,39 @@ class qCanvas {
         var nodeA, nodeB;
 
         // fake gravity to bring stuff together
-        nodeB = { x: 0, y: 0 }
-        for (var i = 0; i < nodes.length; i++) {
-            nodeA = nodes[i];
-            // nodeA.attract(delta, nodeB);
-            // nodeA.react(delta, nodeB, 150, -1000);
-
-        }
-
-        // keep things slightly apart
+        // nodeB = { x: 0, y: 0 }
         // for (var i = 0; i < nodes.length; i++) {
         //     nodeA = nodes[i];
-        //     for (var j = i + 1; j < nodes.length; j++) {
-        //         nodeB = nodes[j];
-        //         nodeA.react(delta, nodeB);
-        //         nodeB.react(delta, nodeA);
-        //     }
+        //     // nodeA.attract(delta, nodeB);
+        //     nodeA.react(delta, nodeB, 5000, -10);
+
         // }
+
+        // keep things slightly apart
+        for (var i = 0; i < nodes.length; i++) {
+            nodeA = nodes[i];
+            for (var j = i + 1; j < nodes.length; j++) {
+                nodeB = nodes[j];
+                nodeA.react(delta, nodeB, 80, 5000);
+                nodeB.react(delta, nodeA, 80, 5000);
+            }
+        }
 
         // charge between links
         for (let key of manager.links.all_links.keys()) {
             const [a, b] = key.split('_');
             nodeA = manager.getHost(a);
             nodeB = manager.getHost(b);
-            // if (nodeA && nodeB) {
-            //     nodeA.react(nodeB, 808, 1000);
-            //     nodeB.react(nodeA, 808, 1000);
-            //     nodeA.attract(delta, nodeB);
-            //     nodeB.attract(delta, nodeA);
-            // }
+            if (nodeA && nodeB) {
+                nodeA.react(delta, nodeB, 200, 1000);
+                nodeB.react(delta, nodeA, 200, 1000);
+
+                nodeA.react(delta, nodeB, 500, -1000);
+                nodeB.react(delta, nodeA, 500, -1000);
+
+                // nodeA.attract(delta, nodeB);
+                // nodeB.attract(delta, nodeA);
+            }
         }
 
         canvas.nodes.forEach(node => node.update(delta));
@@ -294,13 +313,11 @@ class qCanvas {
 
         nodes.forEach(node => node.render(ctx))
 
-
         // debug center point
         ctx.beginPath();
         ctx.fillStyle = '#0f0'
         ctx.arc(0, 0, 2, 0, Math.PI * 2);
         ctx.fill();
-
 
         ctx.restore();
         // debug labels
@@ -332,14 +349,16 @@ class EventManager {
         canvas.nodes.forEach(node => {
             if (!hosts.has(node.label)) {
                 // console.log('remove ', node.label);
-                this.removeHost(node.label);
+                this.removeHost(node);
             }
         })
     }
 
     process(event) {
         // packet from a, b
-        this.packet(event.src, event.dest, event.length);
+        var packet = this.packet(event.src, event.dest, event.length);
+        // packet.color = is_local(event.src) ? 'blue' : 'red'
+        packet.color = event.t === 't' ? 'green' : 'orange';
     }
 
     packet(src, dst, size) {
@@ -364,7 +383,7 @@ class EventManager {
         // setTimeout(() => a.isSending(b, size), 100);
 
 
-        a.isSending(b, size)
+        return a.isSending(b, size)
     }
 
     getHost(host) {
@@ -421,7 +440,7 @@ class EventManager {
     }
 
     removeHost(host) {
-        this.hosts.delete(host);
+        this.hosts.delete(host.label);
         canvas.remove(host);
     }
 }
