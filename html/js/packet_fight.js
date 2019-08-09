@@ -22,16 +22,14 @@
  * - the physics simulation
  * - the rendering (canvas)
  */
-
-
 /**
  * Improvements
  * - give an initial velocity on packet firing
- * - identify own host
+ * - [x] identify own host
  * - more random-ness?
  * - alter size based on recent activity?
  * - click interactivity
- * -
+ * - panning controls
  */
 
 class qNode {
@@ -51,10 +49,10 @@ class qNode {
     isSending(target, size) {
         var packet = new qNode(this.x + rand(this.r  * 4), this.y + rand(this.r * 4));
         size = size || 100;
-        // packet.r = Math.sqrt(size);
-
+        packet.r = Math.sqrt(size) * 0.6 + 2;
         // sizing 5, 10, 15, 20
-        packet.r = 5 * Math.max(Math.log(size) / Math.log(10), 0.5);
+        // packet.r = 5 * Math.max(Math.log(size) / Math.log(10), 0.5);
+        // packet.r = 5 + size / 1500 * 10;
         packet.target = target;
         packet.life = 0 + Math.random() * 50 | 0;
         if (!this.fires) this.fires = [];
@@ -166,6 +164,7 @@ class qNode {
     }
 
     render(ctx) {
+        ctx.globalCompositeOperation = 'lighter'
         ctx.save();
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
@@ -187,7 +186,7 @@ class qNode {
             // hack, this should be done in a better way
             if (is_local(label)) label = '*** ' + label + ' ***'
             label = lookup(label) || label
-            ctx.fillText(label, this.x, this.y);
+            ctx.fillText(label, this.x, this.y + this.r + 12);
         }
 
         // debug vectors
@@ -258,8 +257,8 @@ class qCanvas {
             nodeA = nodes[i];
             for (var j = i + 1; j < nodes.length; j++) {
                 nodeB = nodes[j];
-                nodeA.react(delta, nodeB, 80, 5000);
-                nodeB.react(delta, nodeA, 80, 5000);
+                nodeA.react(delta, nodeB, 80, 4000);
+                nodeB.react(delta, nodeA, 80, 4000);
             }
         }
 
@@ -269,11 +268,11 @@ class qCanvas {
             nodeA = manager.getHost(a);
             nodeB = manager.getHost(b);
             if (nodeA && nodeB) {
-                nodeA.react(delta, nodeB, 200, 1000);
-                nodeB.react(delta, nodeA, 200, 1000);
+                nodeA.react(delta, nodeB, 200, 400);
+                nodeB.react(delta, nodeA, 200, 400);
 
-                nodeA.react(delta, nodeB, 500, -1000);
-                nodeB.react(delta, nodeA, 500, -1000);
+                nodeA.react(delta, nodeB, 500, -800);
+                nodeB.react(delta, nodeA, 500, -800);
 
                 // nodeA.attract(delta, nodeB);
                 // nodeB.attract(delta, nodeA);
@@ -286,6 +285,8 @@ class qCanvas {
     render() {
         const { ctx, w, h, nodes } = this;
         ctx.save();
+        // ctx.clearRect(0, 0, w, h);
+        // ctx.fillStyle = '#000';
         ctx.clearRect(0, 0, w, h);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -307,7 +308,9 @@ class qCanvas {
         this.viewy += (ay - this.viewy) * 0.65;
 
         // ctx.translate(w / 2 - this.viewx, h / 2 - this.viewy);
-        ctx.translate(w / 2 - ax, h / 2 - ay);
+        // ctx.translate(w / 2 - ax, h / 2 - ay);
+
+        ctx.translate(w / 2, h / 2);
 
         ctx.scale(this.zoom, this.zoom);
 
@@ -356,7 +359,7 @@ class EventManager {
 
     process(event) {
         // packet from a, b
-        var packet = this.packet(event.src, event.dest, event.length);
+        var packet = this.packet(event.src, event.dest, event.len);
         // packet.color = is_local(event.src) ? 'blue' : 'red'
         packet.color = event.t === 't' ? 'green' : 'orange';
     }
@@ -381,8 +384,6 @@ class EventManager {
 
         // TODO if a and b are too close, defer animation
         // setTimeout(() => a.isSending(b, size), 100);
-
-
         return a.isSending(b, size)
     }
 
@@ -433,6 +434,7 @@ class EventManager {
             node.x = Math.cos(angle) * 300;
             node.y = Math.sin(angle) * 300;
         }
+
 
         canvas.add(node);
         this.hosts.set(host, node);
