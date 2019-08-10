@@ -30,12 +30,13 @@
  * - alter size based on recent activity?
  * - click interactivity
  * - panning controls
+ * - refactor layout managment
  */
 
 class qNode {
     constructor(x, y, label) {
-        this.x = x;
-        this.y = y;
+        this.set(x, y);
+
         this.dx = 0;
         this.dy = 0;
 
@@ -43,6 +44,13 @@ class qNode {
         this.r = 40;
         this.label = label || '';
         this.color = '';
+    }
+
+    set(x, y) {
+        this.x = x;
+        this.y = y;
+        this.px = x; // previous x
+        this.py = y; // previous y
     }
 
     // shoots packet
@@ -244,13 +252,11 @@ class qCanvas {
         var nodeA, nodeB;
 
         // fake gravity to bring stuff together
-        // nodeB = { x: 0, y: 0 }
-        // for (var i = 0; i < nodes.length; i++) {
-        //     nodeA = nodes[i];
-        //     // nodeA.attract(delta, nodeB);
-        //     nodeA.react(delta, nodeB, 5000, -10);
-
-        // }
+        nodeB = { x: 0, y: 0 }
+        for (var i = 0; i < nodes.length; i++) {
+            nodeA = nodes[i];
+            nodeA.react(delta, nodeB, 5000, -10000);
+        }
 
         // keep things slightly apart
         for (var i = 0; i < nodes.length; i++) {
@@ -426,13 +432,10 @@ class EventManager {
         */
 
         if (is_local(host)) {
-            node.x = 0
-            node.y = this._inside_count++ * 100
+            node.set(0, this._inside_count++ * 100);
         } else {
             var angle = this._outside_count++ / 10 * Math.PI * 2;
-
-            node.x = Math.cos(angle) * 300;
-            node.y = Math.sin(angle) * 300;
+            node.set(Math.cos(angle) * 300, node.y = Math.sin(angle) * 300);
         }
 
 

@@ -24,6 +24,9 @@ use std::net::TcpStream;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
+use std::fmt;
+
+use zerocopy::{FromBytes, AsBytes, Unaligned, ByteSlice, LayoutVerified};
 
 const CAPTURE_TCP:bool = true;
 const DEBUG:bool = false;
@@ -312,6 +315,81 @@ fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Send
     }
 }
 
+#[derive(FromBytes, AsBytes, Unaligned)]
+#[repr(C)]
+struct DnsMessage {
+    transaction_id: [u8; 2],
+        // QR: bool, // 1 query or reply
+        // OPCODE:, // 4 QUERY (0) IQUERY (1), or STATUS (server status request, 2)
+        // AA: bool, // 1,
+        // RC: bool, /// trancation
+
+    dns_flags: [u8; 2],
+    questions: [u8; 2],
+    answers: [u8; 2],
+    athority_rrs: [u8; 2],
+    additional_rrs: [u8; 2],
+
+        // query
+        // name - read till 00 (todo: punny code encoding)
+        // type: a = 01
+        // class:
+
+        // answer
+        // name - 2byte
+        // type
+        // data len
+        // address
+}
+
+
+struct DnsMessagePacket <B> {
+    header: LayoutVerified<B, DnsMessage>,
+    body: B,
+}
+
+impl<B: ByteSlice> DnsMessagePacket<B> {
+    pub fn parse(bytes: B) -> Option<DnsMessagePacket<B>> {
+        let (header, body) = LayoutVerified::new_unaligned_from_prefix(bytes)?;
+        Some(DnsMessagePacket { header, body })
+    }
+
+    pub fn answers(&self) -> u16 {
+        (self.header.answers[1]).into()
+    }
+
+    pub fn is_reply(&self) -> bool  {
+        self.header.transaction_id[0] >> 7 == 0
+    }
+
+    pub fn questions(&self) -> u16 {
+        (self.header.questions[1]).into()
+    }
+
+    pub fn first_name(&self) -> String {
+        let b = &self.body;
+        let result:Vec<u8> = b.iter().take_while(|v| **v > 0)
+            .cloned()
+            .map(|v| match v { 3 => '.' as u8, rest => rest } )
+            .collect();
+
+        String::from_utf8_lossy(&result).into()
+    }
+}
+
+impl fmt::Display for DnsMessagePacket<&[u8]> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "is_reply: {},
+         questions: {}, answers: {}
+         first name: {}
+         ", self.is_reply(), self.questions(), self.answers(), self.first_name())
+    }
+}
+
+fn parse_dns(payload: &[u8]) -> Option<DnsMessagePacket<&[u8]>> {
+    DnsMessagePacket::parse(payload)
+}
+
 fn handle_udp_packet(
     interface_name: &str,
     source: IpAddr,
@@ -348,6 +426,15 @@ fn handle_udp_packet(
 
         // start parsing
         let payload = udp.payload();
+
+        if udp.get_source() == 53 {
+            println!("Payload {:?}", payload);
+
+            parse_dns(payload).map(|v| {
+                println!("DNS {}\n{:?}, {:?}", v, v.header.answers, v.body);
+            });
+        }
+        
         // println!("Payload {:?}", udp.payload());
     } else {
         println!("[{}]: Malformed UDP Packet", interface_name);
