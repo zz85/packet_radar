@@ -30,7 +30,7 @@
  * - alter size based on recent activity?
  * - click interactivity
  * - panning controls
- * - refactor layout managment
+ * - refactor layout management
  */
 
 class qNode {

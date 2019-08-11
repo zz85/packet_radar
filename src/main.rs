@@ -108,7 +108,7 @@ fn main() {
                         let data: ClientRequest = serde_json::from_str(&text).unwrap();
 
                         let req = data.req;
-                        println!("data req: {}, val: {}", req, data.value);
+                        // println!("data req: {}, val: {}", req, data.value);
 
                         match req.as_ref() {
                             "lookup" => {
@@ -132,7 +132,7 @@ fn main() {
                             "local_addr" => {
                                 let interfaces = pnet::datalink::interfaces();
                                 for interface in interfaces {
-                                    println!("Interface {:?}", interface.ips);
+                                    // println!("Interface {:?}", interface.ips);
 
                                     for ip in interface.ips {
                                         let src = ip.ip();
@@ -147,10 +147,7 @@ fn main() {
                                             .write()
                                             .unwrap()
                                             .drain_filter(|c| c.send_message(&message).is_err());
-
                                     }
-
-
                                 }
                             },
                             _ => {

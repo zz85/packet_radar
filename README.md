@@ -56,12 +56,14 @@ open `html/packet_viz.html` in your browser
 
 IDEAs / TODO
 - [x] DNS resolution
-- [x] Find local address
+- [x] Find local addresses
 - [ ] Whois
-- [ ] Mtr
+- [ ] Mtr / Ping probes
 - [ ] Traffic categorization (UDP, TCP, TLS)
-- [ ] DNS capture
-- [ ] RTT
+- [x] DNS capture
+- [ ] RTT Analysis
 - [ ] Packet replay
-- [ ] Terminal Interfaces
+- [ ] Terminal interface
 - [ ] Visual traceroute
+- [ ] TLS Parsing
+- [ ] Quic Packet Parsing

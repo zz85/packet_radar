@@ -6,10 +6,11 @@ use std::char;
 use dns_lookup::lookup_addr;
 
 use std::collections::HashMap;
-use std::sync::{Mutex};
+use std::sync::{RwLock};
 
 lazy_static! {
-    static ref CACHED_IPS_TO_DOMAIN: Mutex<HashMap<String, String>> = Default::default();
+    // use a lock until a performance is known, in which this can be swapped for evmap
+    static ref CACHED_IPS_TO_DOMAIN: RwLock<HashMap<String, String>> = Default::default();
 }
 
 /**
@@ -21,7 +22,7 @@ pub fn parse_dns(payload: &[u8]) -> Option<DnsPacket<&[u8]>> {
 }
 
 pub fn reverse_lookup(ip: String) -> String {
-    match CACHED_IPS_TO_DOMAIN.lock().unwrap().get(ip.as_str()) {
+    match CACHED_IPS_TO_DOMAIN.read().unwrap().get(ip.as_str()) {
         Some(value) => {
             println!("Using DNS cache domain {} -> {}", ip, value);
             value.clone()
@@ -48,16 +49,6 @@ struct DnsHeader {
     answers: [u8; 2],
     athority_rrs: [u8; 2],
     additional_rrs: [u8; 2],
-        // query
-        // name - read till 00 (todo: punny code encoding)
-        // type: [2] a = 01
-        // class: [2]
-
-        // answer
-        // name - 2byte
-        // type
-        // data len
-        // address
 }
 
 pub struct DnsPacket <B> {
@@ -110,6 +101,7 @@ impl<B: ByteSlice> DnsPacket<B> {
     }
 
     fn parse_name(&self, buf:&mut Buf) -> String {
+        // todo: punny code encoding
         let mut domain = String::new();
 
         loop {
@@ -157,10 +149,9 @@ impl<B: ByteSlice> DnsPacket<B> {
                             // hardcode domain compression assumption
                             buf.read_16();
                         } else {
-                            println!("Do something here!");
+                            println!("No domain name compression!");
                             self.parse_name(&mut buf);
                         }
-                        // else read name again
 
                         let ans_type = RecordTypes::from_u16(buf.read_16());
 
@@ -193,7 +184,7 @@ impl<B: ByteSlice> DnsPacket<B> {
                                 }
 
                                 // println!("Found ipv4 {}", ip_str);
-                                CACHED_IPS_TO_DOMAIN.lock().unwrap().insert(ip_str.clone(), domain.clone());
+                                CACHED_IPS_TO_DOMAIN.write().unwrap().insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::AAAA => {
@@ -215,7 +206,7 @@ impl<B: ByteSlice> DnsPacket<B> {
                                 }
 
                                 // println!("Found ipv6 AAAA {}", ip_str);
-                                CACHED_IPS_TO_DOMAIN.lock().unwrap().insert(ip_str.clone(), domain.clone());
+                                CACHED_IPS_TO_DOMAIN.write().unwrap().insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::CNAME => {
@@ -272,8 +263,7 @@ fn u16_val(a:u8, b:u8) -> u16 {
 }
 
 /* Simple ByteReader */
-// TODO use byteorder or some other library?
-
+// could use byteorder or other library some other day
 
 struct Buf<'a> {
     buf: &'a [u8],
