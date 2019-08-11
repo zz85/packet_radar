@@ -395,13 +395,13 @@
             var mx = (cx - o.x);
             var my = (cy - o.y);
 
-            // o.x += mx * 0.005;
-            // o.y += my * 0.005;
+            o.x += mx * 0.005;
+            o.y += my * 0.005;
 
             var d = Math.sqrt(mx * mx + my * my);
             if (d == 0) return;
-            o.x += mx / d * 0.15;
-            o.y += my / d * 0.15;
+            // o.x += mx / d * 0.15;
+            // o.y += my / d * 0.15;
 
         });
 
@@ -420,11 +420,11 @@
                 if (ly == 0 ) return;
 
                 // A
-                // dx -= lx * 0.5 / d2;
-                // dy -= ly * 0.5 / d2;
+                dx -= lx * 0.5 / d2;
+                dy -= ly * 0.5 / d2;
 
-                dx -= lx * 0.005 / d;
-                dy -= ly * 0.005 / d;
+                // dx -= lx * 0.005 / d;
+                // dy -= ly * 0.005 / d;
 
                 // B
                 // dx -= lx * 2.5 / d2;
@@ -435,12 +435,12 @@
             })
 
             // A
-            // o.ax += dx;
-            // o.ay += dy;
+            o.ax += dx;
+            o.ay += dy;
 
             // B
-            o.x += dx;
-            o.y += dy;
+            // o.x += dx;
+            // o.y += dy;
         });
 
         nodes.forEach(o => {
