@@ -273,3 +273,7 @@ function rand(n) {
     // returns -0.5,0.5
     return (Math.random() - 0.5) * n;
 }
+
+function samp_log(...args) {
+    if (Math.random() < 0.01) console.log(...args);
+}

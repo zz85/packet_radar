@@ -5,81 +5,7 @@
         background: #000;
     }
 </style>
-<script>
-
-
-
- class DownAndDragAction {
-        constructor(dom, cb) {
-            this.cb = cb;
-            this.down = false;
-            this.dom = dom;
-
-            this.to_release = {
-                mousedown: dom.addEventListener('mousedown', this.mousedown.bind(this)),
-                mousemove: dom.addEventListener('mousemove', this.mousemove.bind(this)),
-                mouseup: dom.addEventListener('mouseup', this.mouseup.bind(this))
-            };
-        }
-
-        mousedown(e) {
-            this.down = true;
-            console.log(e.x, e.y);
-            this.cb(e.x, e.y);
-        }
-
-        mousemove(e) {
-            if (!this.down) return;
-            console.log(e.x, e.y);
-            this.cb(e.x, e.y);
-        }
-
-        mouseup(e) {
-            this.down = false;
-            console.log(e.x, e.y);
-            this.cb(e.x, e.y);
-        }
-
-        release() {
-            for (var k in this.to_release) {
-                this.dom.removeEventListener(k, this.to_release[k]);
-            }
-
-            this.to_release = null;
-            this.dom = null;
-            this.cb = null;
-        }
-    }
-
-
-    class OnUpAction {
-        constructor(dom, cb) {
-            this.cb = cb;
-            this.down = false;
-            this.dom = dom;
-
-            this.to_release = {
-                mouseup: dom.addEventListener('mouseup', this.mouseup.bind(this))
-            };
-        }
-
-        mouseup(e) {
-            this.cb(e.x, e.y);
-        }
-
-        release() {
-            for (var k in this.to_release) {
-                this.dom.removeEventListener(k, this.to_release[k]);
-            }
-
-            this.to_release = null;
-            this.dom = null;
-            this.cb = null;
-        }
-    }
-
-
-</script>
+<script src="js/action_utils.js"></script>
 <script src="js/canvas.js"></script>
 
 <script>
@@ -97,182 +23,69 @@
     document.body.appendChild(canvas.dom);
 
     var px, py;
-    new DownAndDragAction(canvas.dom, (x, y) => {
+    // new DownAndDragAction(canvas.dom, (x, y) => {
+    //     x = x - innerWidth / 2
+    //     y = y - innerHeight / 2
+    //     var node = new qNode(x, y);
+    //     if (!px) {
+    //         px = x;
+    //         py = y;
+    //     }
+    //     // node.px = x + rand(20);
+    //     // node.py = y + rand(20);
+    //     node.px = px;
+    //     node.py = py;
+    //     node.rim = '#' + (Math.random() * 0xffffff | 0).toString(16);
+    //     px = x;
+    //     py = y;
+    //     node.r = Math.random() * 20;
+    //     node.life = 400;
+    //     canvas.add(node);
+    // })
+
+    // new OnUpAction(canvas.dom, () => {
+    //     px = null;
+    //     py = null;
+    // })
+
+    var links = [];
+
+    var start;
+    new OnDownAction(canvas.dom, (x, y) => {
         x = x - innerWidth / 2
         y = y - innerHeight / 2
+        if (!start)
+        start = createNode(x, y)
+    })
+
+    function createNode(x, y) {
         var node = new qNode(x, y);
-        if (!px) {
-            px = x;
-            py = y;
-        }
-        // node.px = x + rand(20);
-        // node.py = y + rand(20);
-        node.px = px;
-        node.py = py;
+        node.px = x + rand(20);
+        node.py = y + rand(20);
         node.rim = '#' + (Math.random() * 0xffffff | 0).toString(16);
-        px = x;
-        py = y;
         node.r = Math.random() * 20;
         node.life = 400;
         canvas.add(node);
-    })
+        return node;
+    }
 
-    new OnUpAction(canvas.dom, () => {
-        px = null;
-        py = null;
+    new OnUpAction(canvas.dom, (x, y) => {
+        x = x - innerWidth / 2
+        y = y - innerHeight / 2
+        var end = createNode(x, y)
+        // create Link
+
+        links.push({
+            start,
+            end
+        })
     })
 
 
     var simulate = 
     [
-    function simulate1(delta) {
-        const nodes = canvas.nodes;
-
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
-
-            o.x += dx;
-            o.y += dy;
-            o.life--;
-
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-    function simulate2(dt) {
-        const nodes = canvas.nodes;
-
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
-
-            var friction = 0.5;
-            o.x += dx * friction;
-            o.y += dy * friction;
-            o.life--;
-
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-    function simulate3(dt) {
-        const nodes = canvas.nodes;
-
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
-
-            var friction = 0.5;
-            o.x += dx * friction * dt;
-            o.y += dy * friction * dt;
-            o.life--;
-
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-    function simulate5(dt) {
-        // bug fix, slido!
-        const nodes = canvas.nodes;
-
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
-
-            var friction = 0.9;
-            o.px = o.x;
-            o.py = o.y;
-            o.x += dx * friction;
-            o.y += dy * friction;
-            
-
-            o.life--;
-
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-   
-    function simulate6(dt) {
-         // mutual attraction
-        const nodes = canvas.nodes;
-
-        nodes.forEach(o => {
-            var dx = 0;
-            var dy = 0;
-            nodes.forEach(p => {
-                dx += (p.x - o.x) * 0.001;
-                dy += (p.y - o.y) * 0.001;
-            })
-
-            o.x += dx;
-            o.y += dy;
-        });
-
-
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
-
-            var friction = 0.95;
-            o.px = o.x;
-            o.py = o.y;
-            o.x += dx * friction;
-            o.y += dy * friction;
-            
-            o.life--;
-
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-    function simulate7(dt) {
-         // mutual repellison
-        const nodes = canvas.nodes;
-
-        nodes.forEach(o => {
-            var dx = 0;
-            var dy = 0;
-            nodes.forEach(p => {
-                dx -= (p.x - o.x) * 0.001;
-                dy -= (p.y - o.y) * 0.001;
-            })
-
-            o.x += dx;
-            o.y += dy;
-        });
-
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
-
-            var friction = 0.95;
-            o.px = o.x;
-            o.py = o.y;
-            o.x += dx * friction;
-            o.y += dy * friction;
-            
-            o.life--;
-
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-    function simulate8(dt) {
-         // gravity
+     function simulate11(dt) {
+         // stability around rings
         const nodes = canvas.nodes;
 
         var cx = 0;
@@ -286,122 +99,45 @@
         cx /= nodes.length;
         cy /= nodes.length;
 
-        nodes.forEach(o => {
-            o.x += (cx - o.x) * 0.01;
-            o.y += (cy - o.y) * 0.01;
-        });
+        // Calculate CG with max
+
+        // var cr = 0;
 
         // nodes.forEach(o => {
-        //     var dx = 0;
-        //     var dy = 0;
-        //     nodes.forEach(p => {
-        //         dx -= (p.x - o.x) * 0.001;
-        //         dy -= (p.y - o.y) * 0.001;
-        //     })
-
-        //     o.x += dx;
-        //     o.y += dy;
+        //     var amp = Math.sqrt(o.x * o.x + o.y * o.y);
+        //     cx += o.x * o.x / amp * o.r;
+        //     cy += o.y * o.y / amp * o.r;
+        //     cr += o.r;
         // });
 
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
+        // cx /= nodes.length / (cr / nodes.length);
+        // cy /= nodes.length / (cr / nodes.length);
+        // // (3, 3) * 2, (1, 1) * 1 = 2, 2
 
-            var friction = 0.95;
-            o.px = o.x;
-            o.py = o.y;
-            o.x += dx * friction;
-            o.y += dy * friction;
-            
-            o.life--;
 
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-    function simulate9(dt) {
-         // gravity + acceleration
-        const nodes = canvas.nodes;
-
-        var cx = 0;
-        var cy = 0;
-
-        nodes.forEach(o => {
-            cx += o.x;
-            cy += o.y;
-        });
-
-        cx /= nodes.length;
-        cy /= nodes.length;
-
-        // gravitate
-        nodes.forEach(o => {
-            o.ax += (cx - o.x) * 0.001;
-            o.ay += (cy - o.y) * 0.001;
-        });
-
-        // move apart
-        nodes.forEach((o, i) => {
-            var dx = 0;
-            var dy = 0;
-            nodes.forEach((p, j) => {
-                dx -= (p.x - o.x) * 0.0001;
-                dy -= (p.y - o.y) * 0.0001;
-            })
-
-            o.x += dx;
-            o.y += dy;
-        });
-
-        nodes.forEach(o => {
-            var dx = o.x - o.px;
-            var dy = o.y - o.py;
-
-            var friction = 0.95;
-            o.px = o.x;
-            o.py = o.y;
-            o.x += dx * friction + o.ax + dt * dt;
-            o.y += dy * friction + o.ay + dt * dt;
-            
-            o.life--;
-            o.ax *= 0.9
-            o.ay *= 0.9
-
-            if (o.life < 0) {
-                canvas.remove(o);
-            }
-        });
-    },
-
-    function simulate10(dt) {
-         // gravity + acceleration
-        const nodes = canvas.nodes;
-
-        var cx = 0;
-        var cy = 0;
-
-        nodes.forEach(o => {
-            cx += o.x;
-            cy += o.y;
-        });
-
-        cx /= nodes.length;
-        cy /= nodes.length;
 
         // gravitate
         nodes.forEach(o => {
             var mx = (cx - o.x);
             var my = (cy - o.y);
 
-            o.x += mx * 0.005;
-            o.y += my * 0.005;
+            mx = mx * 0.15 * dt;
+            my = my * 0.15 * dt;
 
-            var d = Math.sqrt(mx * mx + my * my);
-            if (d == 0) return;
-            // o.x += mx / d * 0.15;
-            // o.y += my / d * 0.15;
+            var max_amp = dt * 30;
+            mx = Math.max(-max_amp, Math.min(max_amp, mx))
+            my = Math.max(-max_amp, Math.min(max_amp, my))
+
+            o.x += mx;
+            o.y += my;
+
+            // samp_log(dt);
+
+            // var d2 = mx * mx + my * my;
+            // var d = Math.sqrt(d2);
+            // if (d == 0) return;
+            // o.x += mx / d2 * 0.15;
+            // o.y += my / d2 * 0.15;
 
         });
 
@@ -410,6 +146,7 @@
             var dx = 0;
             var dy = 0;
             nodes.forEach((p, j) => {
+                // TODO subtract radius -  + p.r * 0.5 + o.r * 0.5+
                 var lx = p.x - o.x
                 var ly = p.y - o.y
 
@@ -420,18 +157,15 @@
                 if (ly == 0 ) return;
 
                 // A
-                dx -= lx * 0.5 / d2;
-                dy -= ly * 0.5 / d2;
+                // dx -= lx * 0.5 / d2;
+                // dy -= ly * 0.5 / d2;
 
-                // dx -= lx * 0.005 / d;
-                // dy -= ly * 0.005 / d;
+                dx -= lx * 0.005 / d;
+                dy -= ly * 0.005 / d;
 
                 // B
                 // dx -= lx * 2.5 / d2;
                 // dy -= ly * 2.5 / d2;
-
-                // dx -= (p.x - o.x) * 0.0001; //* (j % 2 === i % 2) ? 1 : -1;
-                // dy -= (p.y - o.y) * 0.0001; // * (j % 2 === i % 2) ? 1 : -1;
             })
 
             // A
@@ -439,23 +173,55 @@
             o.ay += dy;
 
             // B
-            // o.x += dx;
-            // o.y += dy;
+            o.x += dx;
+            o.y += dy;
         });
+
+        // link constraints
+        links.forEach(link => {
+            // take target link len to be 100
+            var l = 200;
+            var a = link.start;
+            var b = link.end;
+
+            // current distance apart
+            var dx = b.x - a.x;
+            var dy = b.y - a.y;
+            var d2 = dx * dx + dy * dy;
+            var d = Math.sqrt(d2);
+
+            var nudge = d / l - 1;
+            nudge = nudge * 0.5 * dt * d;
+
+            //  * 0.25 
+            // 0.5 * dt 
+
+            var mx = nudge * dx / d
+            var my = nudge * dy / d
+            a.x += mx
+            a.y += my
+
+            b.x -= mx
+            b.y -= my
+
+        })
+
+        // Update positions
+        var friction = 1 - 1.5 * dt; // approx 0.95
+        // samp_log('friction', friction)
 
         nodes.forEach(o => {
             var dx = o.x - o.px;
             var dy = o.y - o.py;
 
-            var friction = 0.95;
             o.px = o.x;
             o.py = o.y;
             o.x += dx * friction + o.ax + dt * dt;
             o.y += dy * friction + o.ay + dt * dt;
             
             o.life--;
-            o.ax *= 0.9
-            o.ay *= 0.9
+            o.ax *= friction
+            o.ay *= friction
 
             if (o.life < 0) {
                 canvas.remove(o);
