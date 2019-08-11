@@ -271,7 +271,6 @@ struct Buf<'a> {
 }
 
 impl Buf <'_> {
-
     pub fn new(buf: &[u8]) -> Buf <'_> {
         Buf {
             buf: buf,

@@ -7,10 +7,7 @@
 </style>
 <script>
 
-function rand(n) {
-    // returns -0.5,0.5
-    return (Math.random() - 0.5) * n;
-}
+
 
  class DownAndDragAction {
         constructor(dom, cb) {
@@ -108,14 +105,15 @@ function rand(n) {
             px = x;
             py = y;
         }
-        node.px = x + rand(20);
-        node.py = y + rand(20);
-        // node.px = px;
-        // node.py = py;
+        // node.px = x + rand(20);
+        // node.py = y + rand(20);
+        node.px = px;
+        node.py = py;
         node.rim = '#' + (Math.random() * 0xffffff | 0).toString(16);
         px = x;
         py = y;
-        node.life = 40;
+        node.r = Math.random() * 20;
+        node.life = 400;
         canvas.add(node);
     })
 
@@ -345,14 +343,102 @@ function rand(n) {
         });
 
         // move apart
-        nodes.forEach(o => {
+        nodes.forEach((o, i) => {
             var dx = 0;
             var dy = 0;
-            nodes.forEach(p => {
+            nodes.forEach((p, j) => {
                 dx -= (p.x - o.x) * 0.0001;
                 dy -= (p.y - o.y) * 0.0001;
             })
 
+            o.x += dx;
+            o.y += dy;
+        });
+
+        nodes.forEach(o => {
+            var dx = o.x - o.px;
+            var dy = o.y - o.py;
+
+            var friction = 0.95;
+            o.px = o.x;
+            o.py = o.y;
+            o.x += dx * friction + o.ax + dt * dt;
+            o.y += dy * friction + o.ay + dt * dt;
+            
+            o.life--;
+            o.ax *= 0.9
+            o.ay *= 0.9
+
+            if (o.life < 0) {
+                canvas.remove(o);
+            }
+        });
+    },
+
+    function simulate10(dt) {
+         // gravity + acceleration
+        const nodes = canvas.nodes;
+
+        var cx = 0;
+        var cy = 0;
+
+        nodes.forEach(o => {
+            cx += o.x;
+            cy += o.y;
+        });
+
+        cx /= nodes.length;
+        cy /= nodes.length;
+
+        // gravitate
+        nodes.forEach(o => {
+            var mx = (cx - o.x);
+            var my = (cy - o.y);
+
+            // o.x += mx * 0.005;
+            // o.y += my * 0.005;
+
+            var d = Math.sqrt(mx * mx + my * my);
+            if (d == 0) return;
+            o.x += mx / d * 0.15;
+            o.y += my / d * 0.15;
+
+        });
+
+        // move apart
+        nodes.forEach((o, i) => {
+            var dx = 0;
+            var dy = 0;
+            nodes.forEach((p, j) => {
+                var lx = p.x - o.x
+                var ly = p.y - o.y
+
+                var d2 = lx * lx + ly * ly;
+                var d = Math.sqrt(d2);
+
+                if (lx == 0 ) return;
+                if (ly == 0 ) return;
+
+                // A
+                // dx -= lx * 0.5 / d2;
+                // dy -= ly * 0.5 / d2;
+
+                dx -= lx * 0.005 / d;
+                dy -= ly * 0.005 / d;
+
+                // B
+                // dx -= lx * 2.5 / d2;
+                // dy -= ly * 2.5 / d2;
+
+                // dx -= (p.x - o.x) * 0.0001; //* (j % 2 === i % 2) ? 1 : -1;
+                // dy -= (p.y - o.y) * 0.0001; // * (j % 2 === i % 2) ? 1 : -1;
+            })
+
+            // A
+            // o.ax += dx;
+            // o.ay += dy;
+
+            // B
             o.x += dx;
             o.y += dy;
         });
