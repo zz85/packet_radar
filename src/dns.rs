@@ -6,16 +6,28 @@ use std::char;
 use dns_lookup::lookup_addr;
 
 use std::collections::HashMap;
+use std::sync::{Mutex};
 
+lazy_static! {
+    static ref CACHED_IPS_TO_DOMAIN: Mutex<HashMap<String, String>> = Default::default();
+}
 
-// static mut cached_ips_to_domain = HashMap::new();
+/**
+ * This module contains a simple DNS parser and DNS utils
+ */
 
 pub fn parse_dns(payload: &[u8]) -> Option<DnsPacket<&[u8]>> {
     DnsPacket::parse(payload)
 }
 
 pub fn reverse_lookup(ip: String) -> String {
-    sys_lookup(ip)
+    match CACHED_IPS_TO_DOMAIN.lock().unwrap().get(ip.as_str()) {
+        Some(value) => {
+            println!("Using DNS cache domain {} -> {}", ip, value);
+            value.clone()
+        },
+        None => sys_lookup(ip)
+    }
 }
 
 fn sys_lookup(ip: String) -> String {
@@ -112,8 +124,6 @@ impl<B: ByteSlice> DnsPacket<B> {
             domain.push('.');
         }
 
-        println!("Parsed Domain {}", domain);
-
         domain
     }
 
@@ -122,14 +132,14 @@ impl<B: ByteSlice> DnsPacket<B> {
 
         let mut buf = Buf::new(b);
         let mut state = ParseDns::QuerySection;
-
+        let mut domain:String = Default::default();
 
         // Warning, not very safe parsing
         while buf.avail() {
             // println!("Buf avail");
             match state {
                 ParseDns::QuerySection => {
-                    let domain = self.parse_name(&mut buf);
+                    domain = self.parse_name(&mut buf);
 
                     // type
                     buf.read_16();
@@ -141,8 +151,7 @@ impl<B: ByteSlice> DnsPacket<B> {
                 }
 
                 ParseDns::AnswerSection => {
-                    println!("DNS Answers");
-
+                    // println!("DNS Answers");
                     for _ in 0..self.answers() {
                         if ((buf.peek_u8() >> 6) & 3) > 0 {
                             // hardcode domain compression assumption
@@ -162,56 +171,61 @@ impl<B: ByteSlice> DnsPacket<B> {
                         buf.read_bytes(4);
 
                         // read data length
-                        let space = buf.read_16() as usize;
-
-                        let ip = buf.read_bytes(space);
+                        let data_len = buf.read_16() as usize;
+                        let data = buf.read_bytes(data_len);
 
                         match ans_type {
                             RecordTypes::A => {
                                 // Address record
 
-                                if space == 4 {
-                                    let mut ip_str = String::new();
+                                if data_len != 4 {
+                                    println!("Bad A record!");
+                                    continue;
+                                }
+                                let mut ip_str = String::new();
 
-                                    for i in 0..space {
-                                        ip_str.push_str(&ip[i].to_string());
+                                for i in 0..data_len {
+                                    ip_str.push_str(&data[i].to_string());
 
-                                        if i != space - 1 {
-                                            ip_str.push('.');
-                                        }
+                                    if i != data_len - 1 {
+                                        ip_str.push('.');
                                     }
-
-                                    println!("joined - {}", ip_str);
                                 }
 
-                                println!("Got ip{} {:?}", space, ip);
+                                // println!("Found ipv4 {}", ip_str);
+                                CACHED_IPS_TO_DOMAIN.lock().unwrap().insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::AAAA => {
+                                if data_len != 16 {
+                                    println!("Bad AAAA record!");
+                                    continue;
+                                }
                                 // IP v6 Address record
                                 let mut ip_str = String::new();
-                                for i in 0.. space / 2 {
+                                for i in 0.. data_len / 2 {
 
-                                    let hex = ((ip[i * 2] as u16) << 8) + (ip[i * 2 + 1] as u16);
+                                    let hex = u16_val(data[i * 2], data[i * 2 + 1]);
 
                                     ip_str.push_str(&format!("{:x}", hex));
 
-                                    if i != (space / 2 - 1) {
+                                    if i != (data_len / 2 - 1) {
                                         ip_str.push(':');
                                     }
                                 }
 
-                                println!("Got ipv6 AAAA {:?} - {}", space, ip_str);
+                                // println!("Found ipv6 AAAA {}", ip_str);
+                                CACHED_IPS_TO_DOMAIN.lock().unwrap().insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::CNAME => {
                                 // should do a modified name parsing
-                                let cname = String::from_utf8_lossy(ip);
-                                println!("CNAME {}", cname);
+                                let cname = String::from_utf8_lossy(data);
+                                // println!("CNAME {}", cname);
                             }
 
                             _ => {
-                                println!("MEOW WRONG TYPE");
+                                // println!("MEOW WRONG TYPE");
                             }
                         }
                     }
@@ -252,8 +266,14 @@ impl<B: ByteSlice> DnsPacket<B> {
     }
 }
 
+// returns big/network endian from 2 u8s
+fn u16_val(a:u8, b:u8) -> u16 {
+    ((a as u16) << 8) + (b as u16)
+}
+
 /* Simple ByteReader */
 // TODO use byteorder or some other library?
+
 
 struct Buf<'a> {
     buf: &'a [u8],
@@ -281,7 +301,7 @@ impl Buf <'_> {
     }
 
     fn read_16(&mut self) -> u16 {
-        let val = ((self.buf[self.pointer] as u16) << 8) + (self.buf[self.pointer + 1] as u16);
+        let val = u16_val(self.buf[self.pointer], self.buf[self.pointer + 1]);
         self.pointer += 2;
         return val;
     }
@@ -304,9 +324,6 @@ impl Buf <'_> {
 
 impl fmt::Display for DnsPacket<&[u8]> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "is_reply: {},
-         questions: {}, answers: {}
-         first name: {}
-         ", self.is_reply(), self.questions(), self.answers(), self.first_name())
+        write!(f, "DnsPacket is_reply: {}, questions: {}, answers: {} first name: {}", self.is_reply(), self.questions(), self.answers(), self.first_name())
     }
 }

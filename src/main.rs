@@ -24,6 +24,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+#[macro_use]
+extern crate lazy_static;
 
 mod dns;
 use dns::{parse_dns, reverse_lookup};
@@ -355,7 +357,7 @@ fn handle_udp_packet(
         if udp.get_source() == 53 {
             // println!("Payload {:?}", payload);
             parse_dns(payload).map(|v| {
-                println!("DNS {}\n", v);
+                // println!("DNS {}\n", v);
                 v.parse_body();
             });
         }
