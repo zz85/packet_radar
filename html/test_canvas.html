@@ -5,23 +5,14 @@
         background: #000;
     }
 </style>
-<script src="js/canvas.js"></script>
-
 <script>
 
-    // class World {
-    //     constructor() {
+function rand(n) {
+    // returns -0.5,0.5
+    return (Math.random() - 0.5) * n;
+}
 
-    //     }
-    // }
-
-
-    // Init
-    canvas = new qCanvas();
-
-    document.body.appendChild(canvas.dom);
-
-    class DownAndDragAction {
+ class DownAndDragAction {
         constructor(dom, cb) {
             this.cb = cb;
             this.down = false;
@@ -63,6 +54,51 @@
         }
     }
 
+
+    class OnUpAction {
+        constructor(dom, cb) {
+            this.cb = cb;
+            this.down = false;
+            this.dom = dom;
+
+            this.to_release = {
+                mouseup: dom.addEventListener('mouseup', this.mouseup.bind(this))
+            };
+        }
+
+        mouseup(e) {
+            this.cb(e.x, e.y);
+        }
+
+        release() {
+            for (var k in this.to_release) {
+                this.dom.removeEventListener(k, this.to_release[k]);
+            }
+
+            this.to_release = null;
+            this.dom = null;
+            this.cb = null;
+        }
+    }
+
+
+</script>
+<script src="js/canvas.js"></script>
+
+<script>
+
+    // class World {
+    //     constructor() {
+
+    //     }
+    // }
+
+
+    // Init
+    canvas = new qCanvas();
+
+    document.body.appendChild(canvas.dom);
+
     var px, py;
     new DownAndDragAction(canvas.dom, (x, y) => {
         x = x - innerWidth / 2
@@ -72,16 +108,24 @@
             px = x;
             py = y;
         }
-        node.px = px;
-        node.py = py;
+        node.px = x + rand(20);
+        node.py = y + rand(20);
+        // node.px = px;
+        // node.py = py;
         px = x;
         py = y;
         node.life = 20;
         canvas.add(node);
     })
 
-    var simulate = simulate2;
+    new OnUpAction(canvas.dom, () => {
+        px = null;
+        py = null;
+    })
 
+
+    var simulate = 
+    [
     function simulate1(delta) {
         const nodes = canvas.nodes;
 
@@ -97,16 +141,16 @@
                 canvas.remove(o);
             }
         });
-    }
+    },
 
-    function simulate2(delta) {
+    function simulate2(dt) {
         const nodes = canvas.nodes;
 
         nodes.forEach(o => {
             var dx = o.x - o.px;
             var dy = o.y - o.py;
 
-            var friction = 0.1;
+            var friction = 0.5;
             o.x += dx * friction;
             o.y += dy * friction;
             o.life--;
@@ -115,7 +159,73 @@
                 canvas.remove(o);
             }
         });
-    }
+    },
+
+    function simulate3(dt) {
+        const nodes = canvas.nodes;
+
+        nodes.forEach(o => {
+            var dx = o.x - o.px;
+            var dy = o.y - o.py;
+
+            var friction = 0.5;
+            o.x += dx * friction * dt;
+            o.y += dy * friction * dt;
+            o.life--;
+
+            if (o.life < 0) {
+                canvas.remove(o);
+            }
+        });
+    },
+
+    function simulate5(dt) {
+        // bug fix, slido!
+        const nodes = canvas.nodes;
+
+        nodes.forEach(o => {
+            var dx = o.x - o.px;
+            var dy = o.y - o.py;
+
+            var friction = 0.9;
+            o.px = o.x;
+            o.py = o.y;
+            o.x += dx * friction;
+            o.y += dy * friction;
+            
+
+            o.life--;
+
+            if (o.life < 0) {
+                canvas.remove(o);
+            }
+        });
+    },
+
+   
+    function simulate6(dt) {
+         // mutual attraction
+        const nodes = canvas.nodes;
+
+        nodes.forEach(o => {
+            var dx = o.x - o.px;
+            var dy = o.y - o.py;
+
+            var friction = 0.95;
+            o.px = o.x;
+            o.py = o.y;
+            o.x += dx * friction;
+            o.y += dy * friction;
+            
+            o.life--;
+
+            if (o.life < 0) {
+                canvas.remove(o);
+            }
+        });
+    },
+
+    ].pop()
 
     var last_step = Date.now();
     setInterval(()  => {
@@ -128,7 +238,7 @@
 
         // render
         canvas.render();
-    }, 60);
+    }, 30);
 </script>
 </body>
 </html>
