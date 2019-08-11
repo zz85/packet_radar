@@ -1,8 +1,26 @@
 use std::fmt;
 use zerocopy::{FromBytes, AsBytes, Unaligned, ByteSlice, LayoutVerified};
 
+use std::net::IpAddr;
+use std::char;
+use dns_lookup::lookup_addr;
+
+use std::collections::HashMap;
+
+
+// static mut cached_ips_to_domain = HashMap::new();
+
 pub fn parse_dns(payload: &[u8]) -> Option<DnsPacket<&[u8]>> {
     DnsPacket::parse(payload)
+}
+
+pub fn reverse_lookup(ip: String) -> String {
+    sys_lookup(ip)
+}
+
+fn sys_lookup(ip: String) -> String {
+    let hostname = lookup_addr(&ip.parse::<IpAddr>().unwrap()).unwrap();
+    hostname
 }
 
 #[derive(FromBytes, AsBytes, Unaligned)]
@@ -36,9 +54,29 @@ pub struct DnsPacket <B> {
 }
 
 enum ParseDns {
-    READ_DOMAIN,
-    ANS_SECTION,
+    QuerySection,
+    AnswerSection,
     REST
+}
+
+// TODO use FromPrimitive
+#[derive(PartialEq)]
+enum RecordTypes {
+    A = 1,
+    CNAME = 5,
+    AAAA = 28, // IPV6
+    UNKNOWN
+}
+
+impl RecordTypes {
+    fn from_u16(i: u16) -> RecordTypes {
+        match i {
+            1 => RecordTypes::A,
+            5 => RecordTypes::CNAME,
+            28 => RecordTypes::AAAA,
+            _ => RecordTypes::UNKNOWN
+        }
+    }
 }
 
 impl<B: ByteSlice> DnsPacket<B> {
@@ -59,76 +97,138 @@ impl<B: ByteSlice> DnsPacket<B> {
         (self.header.questions[1]).into()
     }
 
-    pub fn first_name(&self) -> String {
-        let b = &self.body;
-        let mut more = 0;
+    fn parse_name(&self, buf:&mut Buf) -> String {
         let mut domain = String::new();
 
+        loop {
+            let next = buf.read_u8();
+            if next == 0 {
+                domain.pop();
+                break;
+            };
+
+            let s = buf.read_bytes(next as usize);
+            domain.push_str(&String::from_utf8_lossy(s));
+            domain.push('.');
+        }
+
+        println!("Parsed Domain {}", domain);
+
+        domain
+    }
+
+    pub fn parse_body(&self) {
+        let b = &self.body;
+
         let mut buf = Buf::new(b);
+        let mut state = ParseDns::QuerySection;
 
-        let mut state = ParseDns::READ_DOMAIN;
+
+        // Warning, not very safe parsing
         while buf.avail() {
-            println!("Buf avail");
+            // println!("Buf avail");
             match state {
-                ParseDns::READ_DOMAIN => {
-                    loop {
-                        let next = buf.read_u8();
-                        if next == 0 {
-                            domain.pop();
-                            println!("Domain {}", domain);
+                ParseDns::QuerySection => {
+                    let domain = self.parse_name(&mut buf);
 
-                            // type
-                            buf.read_16();
+                    // type
+                    buf.read_16();
 
-                            // class
-                            buf.read_16();
+                    // class
+                    buf.read_16();
 
-                            state = ParseDns::ANS_SECTION;
-                            break;
-                        };
-
-                        let s = buf.read_bytes(next as usize);
-                        domain.push_str(&String::from_utf8_lossy(s));
-                        domain.push('.');
-                    }
+                    state = ParseDns::AnswerSection;
                 }
 
-                ParseDns::ANS_SECTION => {
+                ParseDns::AnswerSection => {
                     println!("DNS Answers");
+
                     for _ in 0..self.answers() {
                         if ((buf.peek_u8() >> 6) & 3) > 0 {
                             // hardcode domain compression assumption
                             buf.read_16();
+                        } else {
+                            println!("Do something here!");
+                            self.parse_name(&mut buf);
                         }
                         // else read name again
 
-                        // type
-                        buf.read_16();
+                        let ans_type = RecordTypes::from_u16(buf.read_16());
 
                         // class
                         buf.read_16();
 
                         // ttl
                         buf.read_bytes(4);
-                        
-                        // read ip length
+
+                        // read data length
                         let space = buf.read_16() as usize;
 
                         let ip = buf.read_bytes(space);
 
-                        println!("Got ip{} {:?}", space, ip);
+                        match ans_type {
+                            RecordTypes::A => {
+                                // Address record
+
+                                if space == 4 {
+                                    let mut ip_str = String::new();
+
+                                    for i in 0..space {
+                                        ip_str.push_str(&ip[i].to_string());
+
+                                        if i != space - 1 {
+                                            ip_str.push('.');
+                                        }
+                                    }
+
+                                    println!("joined - {}", ip_str);
+                                }
+
+                                println!("Got ip{} {:?}", space, ip);
+                            }
+
+                            RecordTypes::AAAA => {
+                                // IP v6 Address record
+                                let mut ip_str = String::new();
+                                for i in 0.. space / 2 {
+
+                                    let hex = ((ip[i * 2] as u16) << 8) + (ip[i * 2 + 1] as u16);
+
+                                    ip_str.push_str(&format!("{:x}", hex));
+
+                                    if i != (space / 2 - 1) {
+                                        ip_str.push(':');
+                                    }
+                                }
+
+                                println!("Got ipv6 AAAA {:?} - {}", space, ip_str);
+                            }
+
+                            RecordTypes::CNAME => {
+                                // should do a modified name parsing
+                                let cname = String::from_utf8_lossy(ip);
+                                println!("CNAME {}", cname);
+                            }
+
+                            _ => {
+                                println!("MEOW WRONG TYPE");
+                            }
+                        }
                     }
                     break;
                 }
-        
+
                 _ => {
                     break;
                 }
             }
         }
+    }
 
-        domain = String::new();
-
+     pub fn first_name(&self) -> String {
+        let b = &self.body;
+        let mut more = 0;
+        let mut domain = String::new();
         for &v in b.iter() {
             if v == 0 {
                 break
@@ -144,7 +244,7 @@ impl<B: ByteSlice> DnsPacket<B> {
                 if more == 0 {
                     domain.push('.');
                 }
-            }            
+            }
         }
 
         domain.pop();
@@ -153,6 +253,7 @@ impl<B: ByteSlice> DnsPacket<B> {
 }
 
 /* Simple ByteReader */
+// TODO use byteorder or some other library?
 
 struct Buf<'a> {
     buf: &'a [u8],

@@ -1,6 +1,5 @@
 #![feature(drain_filter)]
 
-use dns_lookup::lookup_addr;
 use pcap::{Capture, Device};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
@@ -27,7 +26,7 @@ use std::thread;
 
 
 mod dns;
-use dns::parse_dns;
+use dns::{parse_dns, reverse_lookup};
 
 const CAPTURE_TCP:bool = true;
 const DEBUG:bool = false;
@@ -113,7 +112,7 @@ fn main() {
                             "lookup" => {
                                 // handle look up address
                                 let ip = data.value;
-                                let hostname = lookup_addr(&ip.parse::<IpAddr>().unwrap()).unwrap();
+                                let hostname = reverse_lookup(ip.clone());
                                 // println!("Name look up from: {} to {}", destination, hostname);
 
                                 let p = json!({
@@ -149,7 +148,7 @@ fn main() {
 
                                     }
 
-                                    
+
                                 }
                             },
                             _ => {
@@ -354,13 +353,13 @@ fn handle_udp_packet(
         let payload = udp.payload();
 
         if udp.get_source() == 53 {
-            println!("Payload {:?}", payload);
-
+            // println!("Payload {:?}", payload);
             parse_dns(payload).map(|v| {
                 println!("DNS {}\n", v);
+                v.parse_body();
             });
         }
-        
+
         // println!("Payload {:?}", udp.payload());
     } else {
         println!("[{}]: Malformed UDP Packet", interface_name);
@@ -412,7 +411,6 @@ fn handle_transport_protocol(
     packet: &[u8],
     tx: &Sender<OwnedMessage>,
 ) {
-    // let dest_host = lookup_addr(&destination).unwrap();
     // println!("Protocol: {}, Source: {}, Destination: {} ({})", protocol, source, destination, dest_host);
 
     match protocol {
