@@ -13,8 +13,8 @@ class qNode {
         
         // for d3
         this.id = this.label;
-        this.vx = 0;
-        this.vy = 0;
+        this.ax = 0;
+        this.ay = 0;
 
 
         this.color = '';
@@ -155,7 +155,7 @@ class qNode {
             ctx.fillStyle = this.color;
             ctx.fill();
         } else {
-            ctx.strokeStyle = '#fff'
+            ctx.strokeStyle = this.rim ? this.rim : '#fff'
             ctx.stroke();
         }
 
