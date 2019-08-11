@@ -1,0 +1,134 @@
+<html>
+<body>
+<style>
+    body {
+        background: #000;
+    }
+</style>
+<script src="js/canvas.js"></script>
+
+<script>
+
+    // class World {
+    //     constructor() {
+
+    //     }
+    // }
+
+
+    // Init
+    canvas = new qCanvas();
+
+    document.body.appendChild(canvas.dom);
+
+    class DownAndDragAction {
+        constructor(dom, cb) {
+            this.cb = cb;
+            this.down = false;
+            this.dom = dom;
+
+            this.to_release = {
+                mousedown: dom.addEventListener('mousedown', this.mousedown.bind(this)),
+                mousemove: dom.addEventListener('mousemove', this.mousemove.bind(this)),
+                mouseup: dom.addEventListener('mouseup', this.mouseup.bind(this))
+            };
+        }
+
+        mousedown(e) {
+            this.down = true;
+            console.log(e.x, e.y);
+            this.cb(e.x, e.y);
+        }
+
+        mousemove(e) {
+            if (!this.down) return;
+            console.log(e.x, e.y);
+            this.cb(e.x, e.y);
+        }
+
+        mouseup(e) {
+            this.down = false;
+            console.log(e.x, e.y);
+            this.cb(e.x, e.y);
+        }
+
+        release() {
+            for (var k in this.to_release) {
+                this.dom.removeEventListener(k, this.to_release[k]);
+            }
+
+            this.to_release = null;
+            this.dom = null;
+            this.cb = null;
+        }
+    }
+
+    var px, py;
+    new DownAndDragAction(canvas.dom, (x, y) => {
+        x = x - innerWidth / 2
+        y = y - innerHeight / 2
+        var node = new qNode(x, y);
+        if (!px) {
+            px = x;
+            py = y;
+        }
+        node.px = px;
+        node.py = py;
+        px = x;
+        py = y;
+        node.life = 20;
+        canvas.add(node);
+    })
+
+    var simulate = simulate2;
+
+    function simulate1(delta) {
+        const nodes = canvas.nodes;
+
+        nodes.forEach(o => {
+            var dx = o.x - o.px;
+            var dy = o.y - o.py;
+
+            o.x += dx;
+            o.y += dy;
+            o.life--;
+
+            if (o.life < 0) {
+                canvas.remove(o);
+            }
+        });
+    }
+
+    function simulate2(delta) {
+        const nodes = canvas.nodes;
+
+        nodes.forEach(o => {
+            var dx = o.x - o.px;
+            var dy = o.y - o.py;
+
+            var friction = 0.1;
+            o.x += dx * friction;
+            o.y += dy * friction;
+            o.life--;
+
+            if (o.life < 0) {
+                canvas.remove(o);
+            }
+        });
+    }
+
+    var last_step = Date.now();
+    setInterval(()  => {
+        var now = Date.now();
+        var diff = (now - last_step) / 1000;
+        last_step = now;
+
+        // simulate
+        simulate(diff);
+
+        // render
+        canvas.render();
+    }, 60);
+</script>
+</body>
+</html>
