@@ -64,7 +64,7 @@
         node.py = y + rand(20);
         node.rim = '#' + (Math.random() * 0xffffff | 0).toString(16);
         node.r = Math.random() * 20;
-        node.life = 400;
+        node.life = 1400;
         canvas.add(node);
         return node;
     }
@@ -76,7 +76,7 @@
         // create Link
 
         links.push({
-            start,
+            start: canvas.nodes.length > 2 ? canvas.nodes[Math.random() * 2 | 0] : start,
             end
         })
     })
@@ -178,9 +178,9 @@
         });
 
         // link constraints
-        links.forEach(link => {
+        links.forEach((link, i) => {
             // take target link len to be 100
-            var l = 200;
+            var l = i == 0 ? 10 : 200;
             var a = link.start;
             var b = link.end;
 
@@ -192,9 +192,7 @@
 
             var nudge = d / l - 1;
             nudge = nudge * 0.5 * dt * d;
-
-            //  * 0.25 
-            // 0.5 * dt 
+            // easing to len size in 1 second
 
             var mx = nudge * dx / d
             var my = nudge * dy / d
