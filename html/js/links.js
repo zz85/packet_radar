@@ -31,13 +31,19 @@ class Links {
         // TODO emit events when link is removed
     }
 
+    getLinkedPairs(cb) {
+        for (let item of this.all_links.values()) {
+            const [a, b] = item.name.split('_');
+            cb(a, b);
+        }
+    }
+
     unique() {
         var set = new Set();
-        for (let item of this.all_links.values()) {
-            const [a, b] = item.name.split('_')
+        this.getLinkedPairs((a, b) => {
             set.add(a);
             set.add(b);
-        }
+        })
         return set;
     }
 }

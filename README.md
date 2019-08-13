@@ -59,7 +59,8 @@ IDEAs / TODO
 - [x] Find local addresses
 - [ ] Whois
 - [ ] Mtr / Ping probes
-- [ ] Traffic categorization (UDP, TCP, TLS)
+- [x] Traffic categorization (UDP, TCP,..
+- [ ] TLS)
 - [x] DNS capture
 - [ ] RTT Analysis
 - [ ] Packet replay
@@ -67,3 +68,4 @@ IDEAs / TODO
 - [ ] Visual traceroute
 - [ ] TLS Parsing
 - [ ] Quic Packet Parsing
+- [ ] Sankey diagrams

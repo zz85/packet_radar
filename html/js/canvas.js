@@ -12,10 +12,10 @@ class qNode {
         this.label = label || '';
         
         // for d3
-        this.id = this.label;
         this.ax = 0;
         this.ay = 0;
 
+        this.life = 100000;
 
         this.color = '';
     }
@@ -27,7 +27,7 @@ class qNode {
         this.py = y; // previous y
     }
 
-    // shoots packet
+    // shoots packet TODO move this out
     isSending(target, size) {
         var packet = new qNode(this.x + rand(this.r  * 4), this.y + rand(this.r * 4));
         size = size || 100;
@@ -45,6 +45,7 @@ class qNode {
 
     // physics update
     update(delta) {
+        // bullet simulation
         if (this.fires) {
             this.fires.forEach(n => {
                 var dx = n.target.x - n.x;
@@ -82,67 +83,6 @@ class qNode {
                 }
             })
         }
-
-        // this.x += this.dx * delta;
-        // this.y += this.dy * delta;
-
-        // var DAMP = 0.4;
-        // // damping
-        // this.dx *= (1 - DAMP * delta);
-        // this.dy *= (1 - DAMP * delta);
-        // if (Math.abs(this.dx) < 0.001) this.dx = 0;
-        // if (Math.abs(this.dy) < 0.001) this.dy = 0;
-    }
-
-    react(delta, node, spread, force, maxSpread) {
-        // push apart
-        force = force || 1000;
-        const dx = node.x - this.x;
-        const dy = node.y - this.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 === 0) return;
-
-        const minSpread = spread || 150;
-        const minSpread2 = minSpread * minSpread;
-        maxSpread = 10000;
-        const maxSpread2 = maxSpread * maxSpread;
-
-        if (d2 > minSpread2) return;
-
-        const d = Math.pow(d2, 0.5);
-        // if (d == 0) d = 0.000001;
-        var f = force / d2;
-
-        // if (f > 100) f = 100;
-
-        this.dx -= dx / d * f * delta * 100;
-        this.dy -= dy / d * f * delta * 100;
-
-    }
-
-    attract(delta, node) {
-        const dx = node.x - this.x;
-        const dy = node.y - this.y;
-
-        let d2 = dx * dx + dy * dy;
-        if (d2 === 0) return;
-
-        const target = 1000;
-        // if (d2 < target * target) return;
-        if (d2 < 100) d2 = 10000;
-
-        const d = Math.pow(d2, 0.5);
-
-        // TODO check attraction equation
-        var pull = target / d2 * 100; // mass
-
-        // pull together
-        this.dx += dx / d * pull * delta;
-        this.dy += dy / d * pull * delta;
-
-        // var m = dx / d * pull * delta;
-        // if (Math.abs(m) > 1) console.log(m);
-
     }
 
     render(ctx) {

@@ -90,19 +90,22 @@ class EventManager {
         return a.isSending(b, size)
     }
 
-    getHost(host) {
-        return this.hosts.get(host);
+    getHost(hostname) {
+        if (is_local(hostname)) hostname = 'local'
+        return this.hosts.get(hostname);
     }
 
-    createHost(host, target) {
-        var tx = rand(200);
-        var ty = rand(200);
+    createHost(hostname, target) {
+        var tx = rand(400);
+        var ty = rand(400);
         if (target) {
             tx += target.x;
             ty += target.y;
         }
+
+        if (is_local(hostname)) hostname = 'local';
         var node = new qNode(tx, ty);
-        node.label = host;
+        node.label = hostname;
 
         // pin
 
@@ -128,19 +131,22 @@ class EventManager {
         }
         */
 
-        if (is_local(host)) {
+        /*
+        if (is_local(hostname)) {
             node.set(0, this._inside_count++ * 100);
         } else {
             var angle = this._outside_count++ / 10 * Math.PI * 2;
             node.set(Math.cos(angle) * 300, node.y = Math.sin(angle) * 300);
         }
+        */
 
         canvas.add(node);
-        this.hosts.set(host, node);
+        this.hosts.set(hostname, node);
         return node;
     }
 
     removeHost(host) {
+        if (host.label == 'local') return;
         this.hosts.delete(host.label);
         canvas.remove(host);
     }
@@ -156,12 +162,27 @@ manager = new EventManager();
 document.body.appendChild(canvas.dom);
 
 var last_step = Date.now();
+var links;
+
 setInterval(()  => {
     var now = Date.now();
     var diff = (now - last_step) / 1000;
+    diff = 0.03;
+    console.log(diff);
     last_step = now;
+
+
+    // derive links // TODO optimize this!
+    links = [];
+    manager.links.getLinkedPairs((a, b) => {
+        links.push({
+            start: manager.getHost(a),
+            end: manager.getHost(b),
+        })
+    })
+
     // simulate
-    // canvas.simulate(diff);
+    simulate(diff);
 
     canvas.nodes.forEach(n => n.update())
 
