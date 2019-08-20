@@ -24,6 +24,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+use tls_parser::{parse_tls_raw_record, parse_tls_plaintext};
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -397,6 +399,36 @@ fn handle_tcp_packet(
 
         let payload = serde_json::to_string(&packet_info).unwrap();
         tx.send(OwnedMessage::Text(payload)).unwrap();
+
+        // strip tcp headers
+        let packet = tcp.payload();
+
+        if packet.len() > 4 {
+            if packet[0] == 0x17 { return }
+            println!("packet {:x} {:x} {:x} {:x}", packet[0], packet[1], packet[2], packet[3]);
+            // 17 3 3 0 Application Data, TLS 1.2
+        }
+
+        // TODO skip to the end of TCP header
+
+        let r = parse_tls_plaintext(&packet);
+        // parse_tls_plaintext parse_tls_raw_record
+        match r {
+            Ok(v) =>  {
+                println!("TLS parsed {:?}", v);
+
+                // let (_,  raw_record) = v;
+                // let record_header = raw_record.hdr;
+                // parse_tls_record_with_header
+                // parse_tls_plaintext
+            },
+            _  => {
+                // println!("Not TLS {:?}", e)
+            }
+        }
+
+
+        
     } else {
         println!("[{}]: Malformed TCP Packet", interface_name);
     }
