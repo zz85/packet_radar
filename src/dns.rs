@@ -1,12 +1,12 @@
 use std::fmt;
-use zerocopy::{FromBytes, AsBytes, Unaligned, ByteSlice, LayoutVerified};
+use zerocopy::{AsBytes, ByteSlice, FromBytes, LayoutVerified, Unaligned};
 
-use std::net::IpAddr;
-use std::char;
 use dns_lookup::lookup_addr;
+use std::char;
+use std::net::IpAddr;
 
 use std::collections::HashMap;
-use std::sync::{RwLock};
+use std::sync::RwLock;
 
 lazy_static! {
     // use a lock until a performance is known, in which this can be swapped for evmap
@@ -26,8 +26,8 @@ pub fn reverse_lookup(ip: String) -> String {
         Some(value) => {
             println!("Using DNS cache domain {} -> {}", ip, value);
             value.clone()
-        },
-        None => sys_lookup(ip)
+        }
+        None => sys_lookup(ip),
     }
 }
 
@@ -41,17 +41,17 @@ fn sys_lookup(ip: String) -> String {
 struct DnsHeader {
     transaction_id: [u8; 2],
     dns_flags: [u8; 2],
-        // QR: bool, // 1 query or reply
-        // OPCODE:, // 4 QUERY (0) IQUERY (1), or STATUS (server status request, 2)
-        // AA: bool, // 1,
-        // RC: bool, /// trancation
+    // QR: bool, // 1 query or reply
+    // OPCODE:, // 4 QUERY (0) IQUERY (1), or STATUS (server status request, 2)
+    // AA: bool, // 1,
+    // RC: bool, /// trancation
     questions: [u8; 2],
     answers: [u8; 2],
     athority_rrs: [u8; 2],
     additional_rrs: [u8; 2],
 }
 
-pub struct DnsPacket <B> {
+pub struct DnsPacket<B> {
     header: LayoutVerified<B, DnsHeader>,
     body: B,
 }
@@ -59,7 +59,7 @@ pub struct DnsPacket <B> {
 enum ParseDns {
     QuerySection,
     AnswerSection,
-    REST
+    REST,
 }
 
 // TODO use FromPrimitive
@@ -68,7 +68,7 @@ enum RecordTypes {
     A = 1,
     CNAME = 5,
     AAAA = 28, // IPV6
-    UNKNOWN
+    UNKNOWN,
 }
 
 impl RecordTypes {
@@ -77,7 +77,7 @@ impl RecordTypes {
             1 => RecordTypes::A,
             5 => RecordTypes::CNAME,
             28 => RecordTypes::AAAA,
-            _ => RecordTypes::UNKNOWN
+            _ => RecordTypes::UNKNOWN,
         }
     }
 }
@@ -92,7 +92,7 @@ impl<B: ByteSlice> DnsPacket<B> {
         (self.header.answers[1]).into()
     }
 
-    pub fn is_reply(&self) -> bool  {
+    pub fn is_reply(&self) -> bool {
         self.header.transaction_id[0] >> 7 == 0
     }
 
@@ -100,7 +100,7 @@ impl<B: ByteSlice> DnsPacket<B> {
         (self.header.questions[1]).into()
     }
 
-    fn parse_name(&self, buf:&mut Buf) -> String {
+    fn parse_name(&self, buf: &mut Buf) -> String {
         // todo: punny code encoding
         let mut domain = String::new();
 
@@ -124,7 +124,7 @@ impl<B: ByteSlice> DnsPacket<B> {
 
         let mut buf = Buf::new(b);
         let mut state = ParseDns::QuerySection;
-        let mut domain:String = Default::default();
+        let mut domain: String = Default::default();
 
         // Warning, not very safe parsing
         while buf.avail() {
@@ -184,7 +184,10 @@ impl<B: ByteSlice> DnsPacket<B> {
                                 }
 
                                 // println!("Found ipv4 {}", ip_str);
-                                CACHED_IPS_TO_DOMAIN.write().unwrap().insert(ip_str.clone(), domain.clone());
+                                CACHED_IPS_TO_DOMAIN
+                                    .write()
+                                    .unwrap()
+                                    .insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::AAAA => {
@@ -194,8 +197,7 @@ impl<B: ByteSlice> DnsPacket<B> {
                                 }
                                 // IP v6 Address record
                                 let mut ip_str = String::new();
-                                for i in 0.. data_len / 2 {
-
+                                for i in 0..data_len / 2 {
                                     let hex = u16_val(data[i * 2], data[i * 2 + 1]);
 
                                     ip_str.push_str(&format!("{:x}", hex));
@@ -206,7 +208,10 @@ impl<B: ByteSlice> DnsPacket<B> {
                                 }
 
                                 // println!("Found ipv6 AAAA {}", ip_str);
-                                CACHED_IPS_TO_DOMAIN.write().unwrap().insert(ip_str.clone(), domain.clone());
+                                CACHED_IPS_TO_DOMAIN
+                                    .write()
+                                    .unwrap()
+                                    .insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::CNAME => {
@@ -230,19 +235,18 @@ impl<B: ByteSlice> DnsPacket<B> {
         }
     }
 
-     pub fn first_name(&self) -> String {
+    pub fn first_name(&self) -> String {
         let b = &self.body;
         let mut more = 0;
         let mut domain = String::new();
         for &v in b.iter() {
             if v == 0 {
-                break
+                break;
             };
 
             if more == 0 {
                 more = v;
-            }
-            else {
+            } else {
                 more -= 1;
                 domain.push(v as char);
 
@@ -258,7 +262,7 @@ impl<B: ByteSlice> DnsPacket<B> {
 }
 
 // returns big/network endian from 2 u8s
-fn u16_val(a:u8, b:u8) -> u16 {
+fn u16_val(a: u8, b: u8) -> u16 {
     ((a as u16) << 8) + (b as u16)
 }
 
@@ -267,14 +271,14 @@ fn u16_val(a:u8, b:u8) -> u16 {
 
 struct Buf<'a> {
     buf: &'a [u8],
-    pointer: usize
+    pointer: usize,
 }
 
-impl Buf <'_> {
-    pub fn new(buf: &[u8]) -> Buf <'_> {
+impl Buf<'_> {
+    pub fn new(buf: &[u8]) -> Buf<'_> {
         Buf {
             buf: buf,
-            pointer: 0
+            pointer: 0,
         }
     }
 
@@ -310,9 +314,15 @@ impl Buf <'_> {
     }
 }
 
-
 impl fmt::Display for DnsPacket<&[u8]> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "DnsPacket is_reply: {}, questions: {}, answers: {} first name: {}", self.is_reply(), self.questions(), self.answers(), self.first_name())
+        write!(
+            f,
+            "DnsPacket is_reply: {}, questions: {}, answers: {} first name: {}",
+            self.is_reply(),
+            self.questions(),
+            self.answers(),
+            self.first_name()
+        )
     }
 }

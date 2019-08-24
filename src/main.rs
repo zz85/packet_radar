@@ -9,9 +9,9 @@ use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
 use pnet::packet::*;
 
-use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::convert::TryFrom;
 
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
@@ -24,7 +24,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-use tls_parser::{parse_tls_raw_record, parse_tls_plaintext};
+use tls_parser::{parse_tls_plaintext, parse_tls_raw_record};
 
 #[macro_use]
 extern crate lazy_static;
@@ -32,11 +32,11 @@ extern crate lazy_static;
 mod dns;
 use dns::{parse_dns, reverse_lookup};
 
-const CAPTURE_TCP:bool = true;
-const DEBUG:bool = false;
-const STATS:bool = false;
+const CAPTURE_TCP: bool = true;
+const DEBUG: bool = false;
+const STATS: bool = false;
 
-use dipstick::{AtomicBucket, Stream, ScheduleFlush, InputScope, stats_all, Output};
+use dipstick::{stats_all, AtomicBucket, InputScope, Output, ScheduleFlush, Stream};
 use std::io;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -47,7 +47,7 @@ struct PacketInfo {
     src_port: u16,
     dest_port: u16,
     t: String, // type: t for tcp, u for udp
-    // todo timestamp + id
+               // todo timestamp + id
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -96,15 +96,15 @@ fn main() {
             clients.write().unwrap().push(_tx);
 
             for message in rx.incoming_messages() {
-				let message = message.unwrap();
+                let message = message.unwrap();
 
-				match message {
-					OwnedMessage::Close(_) => {
-						// let message = OwnedMessage::Close(None);
-						// tx.send_message(&message).unwrap();
-						println!("Client {} disconnected", ip);
-						return;
-					},
+                match message {
+                    OwnedMessage::Close(_) => {
+                        // let message = OwnedMessage::Close(None);
+                        // tx.send_message(&message).unwrap();
+                        println!("Client {} disconnected", ip);
+                        return;
+                    }
                     OwnedMessage::Text(text) => {
                         // json parse request here
                         let data: ClientRequest = serde_json::from_str(&text).unwrap();
@@ -123,14 +123,15 @@ fn main() {
                                     "type": "lookup_addr",
                                     "ip": ip,
                                     "hostname": hostname,
-                                }).to_string();
+                                })
+                                .to_string();
 
                                 let message = OwnedMessage::Text(p);
                                 clients
                                     .write()
                                     .unwrap()
                                     .drain_filter(|c| c.send_message(&message).is_err());
-                            },
+                            }
                             "local_addr" => {
                                 let interfaces = pnet::datalink::interfaces();
                                 for interface in interfaces {
@@ -142,7 +143,8 @@ fn main() {
                                         let p = json!({
                                             "type": "local_addr",
                                             "ip": src,
-                                        }).to_string();
+                                        })
+                                        .to_string();
 
                                         let message = OwnedMessage::Text(p);
                                         clients
@@ -151,24 +153,19 @@ fn main() {
                                             .drain_filter(|c| c.send_message(&message).is_err());
                                     }
                                 }
-                            },
-                            _ => {
-
                             }
+                            _ => {}
                         }
 
                         // handle filtering
                         // handle get buffers
-
-                    },
-                    OwnedMessage::Binary(buf) => {
-
-                    },
-					others => {
+                    }
+                    OwnedMessage::Binary(buf) => {}
+                    others => {
                         println!("ok {:?}", others);
-                    },
-				}
-			}
+                    }
+                }
+            }
         });
     }
 }
@@ -191,10 +188,9 @@ fn cap(tx: Sender<OwnedMessage>) {
     let device = Device::lookup().unwrap();
     println!("Default device {:?}", device);
 
-    let name =
-        device.name.as_str();
-        // "any";
-        // "lo0";
+    let name = device.name.as_str();
+    // "any";
+    // "lo0";
 
     println!("Capturing on device {:?}", name);
 
@@ -223,7 +219,6 @@ fn cap(tx: Sender<OwnedMessage>) {
     let packets = bucket.marker("packets: ");
 
     loop {
-
         i += 1;
         match cap.next() {
             Ok(packet) => {
@@ -275,7 +270,10 @@ fn cap(tx: Sender<OwnedMessage>) {
 
         let stats = cap.stats().unwrap();
         if i % 10000 == 0 {
-            println!("Stats: Received: {}, Dropped: {}, if_dropped: {}", stats.received, stats.dropped, stats.if_dropped);
+            println!(
+                "Stats: Received: {}, Dropped: {}, if_dropped: {}",
+                stats.received, stats.dropped, stats.if_dropped
+            );
             bucket.stats(stats_all);
             bucket.flush_to(&Stream::to_stdout().new_scope()).unwrap();
         }
@@ -284,7 +282,6 @@ fn cap(tx: Sender<OwnedMessage>) {
 
 fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
     let header = Ipv4Packet::new(ethernet.payload());
-    // println!("payload length: {}", (*ethernet.payload()).len());
     if let Some(header) = header {
         handle_transport_protocol(
             interface_name,
@@ -301,7 +298,6 @@ fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Send
 
 fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
     let header = Ipv6Packet::new(ethernet.payload());
-    // println!("payload length: {}", (*ethernet.payload()).len());
     if let Some(header) = header {
         handle_transport_protocol(
             interface_name,
@@ -332,7 +328,7 @@ fn handle_udp_packet(
             src: source.to_string(),
             dest_port: udp.get_destination(),
             src_port: udp.get_source(),
-            t: String::from("u")
+            t: String::from("u"),
         };
 
         let payload = serde_json::to_string(&packet_info).unwrap();
@@ -361,7 +357,7 @@ fn handle_udp_packet(
             });
         }
 
-        // println!("Payload {:?}", udp.payload());
+    // println!("Payload {:?}", udp.payload());
     } else {
         println!("[{}]: Malformed UDP Packet", interface_name);
     }
@@ -394,7 +390,7 @@ fn handle_tcp_packet(
             src: source.to_string(),
             dest_port: tcp.get_destination(),
             src_port: tcp.get_source(),
-            t: String::from("t")
+            t: String::from("t"),
         };
 
         let payload = serde_json::to_string(&packet_info).unwrap();
@@ -404,8 +400,13 @@ fn handle_tcp_packet(
         let packet = tcp.payload();
 
         if packet.len() > 4 {
-            if packet[0] == 0x17 { return }
-            println!("packet {:x} {:x} {:x} {:x}", packet[0], packet[1], packet[2], packet[3]);
+            if packet[0] == 0x17 {
+                return;
+            }
+            println!(
+                "packet {:x} {:x} {:x} {:x}",
+                packet[0], packet[1], packet[2], packet[3]
+            );
             // 17 3 3 0 Application Data, TLS 1.2
         }
 
@@ -414,21 +415,18 @@ fn handle_tcp_packet(
         let r = parse_tls_plaintext(&packet);
         // parse_tls_plaintext parse_tls_raw_record
         match r {
-            Ok(v) =>  {
+            Ok(v) => {
                 println!("TLS parsed {:?}", v);
 
                 // let (_,  raw_record) = v;
                 // let record_header = raw_record.hdr;
                 // parse_tls_record_with_header
                 // parse_tls_plaintext
-            },
-            _  => {
+            }
+            _ => {
                 // println!("Not TLS {:?}", e)
             }
         }
-
-
-        
     } else {
         println!("[{}]: Malformed TCP Packet", interface_name);
     }
@@ -449,7 +447,9 @@ fn handle_transport_protocol(
             handle_udp_packet(interface_name, source, destination, packet, tx)
         }
         IpNextHeaderProtocols::Tcp => {
-            if CAPTURE_TCP { handle_tcp_packet(interface_name, source, destination, packet, tx) }
+            if CAPTURE_TCP {
+                handle_tcp_packet(interface_name, source, destination, packet, tx)
+            }
         }
         IpNextHeaderProtocols::Icmp => {
             // handle_icmp_packet(interface_name, source, destination, packet)
