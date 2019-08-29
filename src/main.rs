@@ -2,11 +2,14 @@
 
 use pcap::{Capture, Device};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
+use pnet::packet::icmp::{echo_reply, echo_request, time_exceeded, IcmpPacket, IcmpTypes};
+use pnet::packet::icmpv6::Icmpv6Packet;
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
+
 use pnet::packet::*;
 
 use serde::{Deserialize, Serialize};
@@ -24,13 +27,16 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-use tls_parser::{parse_tls_plaintext, parse_tls_raw_record, TlsMessage, TlsMessageHandshake, parse_tls_extensions};
-
 #[macro_use]
 extern crate lazy_static;
 
 mod dns;
 use dns::{parse_dns, reverse_lookup};
+
+mod tcp;
+use tcp::parse_tcp_payload;
+
+mod traceroute;
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
@@ -283,6 +289,8 @@ fn cap(tx: Sender<OwnedMessage>) {
 fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
     let header = Ipv4Packet::new(ethernet.payload());
     if let Some(header) = header {
+        println!("TTL {}", header.get_ttl());
+
         handle_transport_protocol(
             interface_name,
             IpAddr::V4(header.get_source()),
@@ -357,7 +365,7 @@ fn handle_udp_packet(
             });
         }
 
-    // println!("Payload {:?}", udp.payload());
+    // println!("UDP Payload {:?}", udp.payload());
     } else {
         println!("[{}]: Malformed UDP Packet", interface_name);
     }
@@ -399,79 +407,7 @@ fn handle_tcp_packet(
         // strip tcp headers
         let packet = tcp.payload();
 
-        // if packet.len() > 4 {
-        //     if packet[0] == 0x17 {
-        //         return;
-        //     }
-        //     println!(
-        //         "packet {:x} {:x} {:x} {:x}",
-        //         packet[0], packet[1], packet[2], packet[3]
-        //     );
-        //     // 17 3 3 0 Application Data, TLS 1.2
-        // }
-
-        // TODO skip to the end of TCP header
-
-        let r = parse_tls_plaintext(&packet);
-        match r {
-            Ok(v) => {
-                // println!("TLS parsed {:?}", v);
-
-                let (_,  plain_text) = v;
-                // let record_header = raw_record.hdr;
-                for m in plain_text.msg {
-                    // println!("msg {:?}", m);
-                    // Handshake(ClientKeyExchange)
-                    // Alert(TlsMessageAlert
-                    // Handshake(ClientHello(TlsClientHelloContents
-
-                    match m {
-                        TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) => {
-                            // println!("Client Hello client_hello {:?}", client_hello);
-                            // ciphers
-                            println!("Version {}", client_hello.version);
-
-                            client_hello.ext.map(|v| {
-                                if let Ok((_, extensions)) = parse_tls_extensions(v) {
-                                    println!("Client Hello Extensions {:?}", extensions);
-                                    // TlsExtension::SNI
-                                    // TlsExtension::EllipticCurves
-                                    // TlsExtension::ALPN
-                                    // TlsExtension::SignatureAlgorithms
-                                    // TlsExtension::KeyShare
-                                    // TlsExtension::SupportedVersions
-                                }
-                            });
-
-                        },
-                        TlsMessage::Handshake(TlsMessageHandshake::ServerHello(server_hello)) => {
-                            // println!("Server Hello server_hello {:?}", server_hello);
-                            server_hello.ext.map(|v| {
-                                if let Ok((_, extensions)) = parse_tls_extensions(v) {
-                                    println!("Server Hello Extensions {:?}", extensions);
-                                    // TODO gather stats tls 1.3 usage
-                                    // TlsExtension::SNI
-                                    // TlsExtension::EllipticCurves
-                                    // TlsExtension::ALPN
-                                    // TlsExtension::SignatureAlgorithms
-                                    // TlsExtension::KeyShare
-                                    // TlsExtension::SupportedVersions
-                                }
-                            });
-                        },
-                        TlsMessage::Handshake(msg) => {
-                            // println!("Handshake msg {:?}", msg);
-                        },
-                        _ => {
-
-                        }
-                    }
-                }
-            }
-            _ => {
-                // println!("Not TLS {:?}", e)
-            }
-        }
+        parse_tcp_payload(packet);
     } else {
         println!("[{}]: Malformed TCP Packet", interface_name);
     }
@@ -497,10 +433,10 @@ fn handle_transport_protocol(
             }
         }
         IpNextHeaderProtocols::Icmp => {
-            // handle_icmp_packet(interface_name, source, destination, packet)
+            handle_icmp_packet(interface_name, source, destination, packet)
         }
         IpNextHeaderProtocols::Icmpv6 => {
-            // handle_icmpv6_packet(interface_name, source, destination, packet)
+            handle_icmpv6_packet(interface_name, source, destination, packet)
         }
         _ => {
             /*println!(
@@ -516,5 +452,71 @@ fn handle_transport_protocol(
                 packet.len()
             )*/
         }
+    }
+}
+
+fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, packet: &[u8]) {
+    let icmp_packet = IcmpPacket::new(packet);
+    if let Some(icmp_packet) = icmp_packet {
+        match icmp_packet.get_icmp_type() {
+            IcmpTypes::EchoReply => {
+                let echo_reply_packet = echo_reply::EchoReplyPacket::new(packet).unwrap();
+                println!(
+                    "[{}]: ICMP echo reply {} -> {} (seq={:?}, id={:?})",
+                    interface_name,
+                    source,
+                    destination,
+                    echo_reply_packet.get_sequence_number(),
+                    echo_reply_packet.get_identifier()
+                );
+            }
+            IcmpTypes::EchoRequest => {
+                let echo_request_packet = echo_request::EchoRequestPacket::new(packet).unwrap();
+                println!(
+                    "[{}]: ICMP echo request {} -> {} (seq={:?}, id={:?})",
+                    interface_name,
+                    source,
+                    destination,
+                    echo_request_packet.get_sequence_number(),
+                    echo_request_packet.get_identifier(),
+                    // echo_request_packet.payload(),
+                );
+            }
+            IcmpTypes::TimeExceeded => {
+                let time_exceeded_packet = time_exceeded::TimeExceededPacket::new(packet).unwrap();
+                println!(
+                    "[{}]: ICMP TimeExceeded {} -> {} (seq={:?}, payload={:?})",
+                    interface_name,
+                    source,
+                    destination,
+                    time_exceeded_packet,
+                    time_exceeded_packet.payload(),
+                );
+            }
+            _ => println!(
+                "[{}]: ICMP packet {} -> {} (type={:?})",
+                interface_name,
+                source,
+                destination,
+                icmp_packet.get_icmp_type()
+            ),
+        }
+    } else {
+        println!("[{}]: Malformed ICMP Packet", interface_name);
+    }
+}
+
+fn handle_icmpv6_packet(interface_name: &str, source: IpAddr, destination: IpAddr, packet: &[u8]) {
+    let icmpv6_packet = Icmpv6Packet::new(packet);
+    if let Some(icmpv6_packet) = icmpv6_packet {
+        println!(
+            "[{}]: ICMPv6 packet {} -> {} (type={:?})",
+            interface_name,
+            source,
+            destination,
+            icmpv6_packet.get_icmpv6_type()
+        )
+    } else {
+        println!("[{}]: Malformed ICMPv6 Packet", interface_name);
     }
 }
