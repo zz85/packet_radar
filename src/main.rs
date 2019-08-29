@@ -224,6 +224,8 @@ fn cap(tx: Sender<OwnedMessage>) {
     let bytes = bucket.counter("bytes: ");
     let packets = bucket.marker("packets: ");
 
+    traceroute::test_ping();
+
     loop {
         i += 1;
         match cap.next() {

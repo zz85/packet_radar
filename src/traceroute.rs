@@ -1,15 +1,27 @@
 use pnet::packet::ip::IpNextHeaderProtocols;
 // use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::icmp::echo_request::{EchoRequestPacket, MutableEchoRequestPacket};
+use pnet::packet::icmp::IcmpTypes;
 use pnet::packet::{MutablePacket, Packet};
 use pnet::transport::transport_channel;
 use pnet::transport::TransportChannelType::Layer4;
 use pnet::transport::TransportProtocol::Ipv4;
 use pnet::transport::TransportSender;
+use pnet_macros_support::types::u16be;
 use std::net::IpAddr;
 use std::time::Duration;
+use rand::random;
+use pnet::util;
+use std::net::Ipv4Addr;
 
 // Sends a probe (ICMP, UDP, TCP)
+
+pub fn test_ping() {
+    let mut prober = Prober::setup().unwrap();
+    prober.ping(
+        IpAddr::from(Ipv4Addr::new(1, 1, 1, 1))
+    );
+}
 
 pub fn probe_udp(dest: &str) {}
 
@@ -22,32 +34,17 @@ enum ProbeResult {
 
 // TODO address map to result? <ip,  Info>
 
-pub fn ping() {
-    // MutableEchoRequestPacket::
-
-    let size = MutableEchoRequestPacket::minimum_packet_size();
-    let mut vec: Vec<u8> = vec![0; size];
-    MutableEchoRequestPacket::new(&mut vec)
-        .unwrap()
-        // .set_identifier()
-        // .set_sequence_number()
-        // .set_payload()
-        ;
-
-    // let mut vec: Vec<u8> = vec![0; packet.packet().len()];
-    // let mut new_packet = MutableUdpPacket::new(&mut vec[..]).unwrap();
-
-    // new_packet.set_source(packet.get_destination());
-    // new_packet.set_destination(packet.get_source());
+fn icmp_checksum(packet: &MutableEchoRequestPacket) -> u16be {
+    util::checksum(packet.packet(), 1)
 }
 
-struct Prober {
+pub struct Prober {
     tx: TransportSender,
 }
 
 impl Prober {
     pub fn setup() -> Option<Prober> {
-        let protocol = Layer4(Ipv4(IpNextHeaderProtocols::Test1));
+        let protocol = Layer4(Ipv4(IpNextHeaderProtocols::Icmp));
 
         let (mut tx, mut rx) = transport_channel(4096, protocol).unwrap();
         // let (mut tx, mut rx) = match transport_channel(4096, protocol) {
@@ -61,9 +58,35 @@ impl Prober {
         Some(Prober { tx })
     }
 
-    fn send() {}
+    pub fn ping(&mut self,  addr:IpAddr) {
+        let payload_size = 8;
+        let min_size = MutableEchoRequestPacket::minimum_packet_size();
+        println!("Size {}", min_size);
+        let mut vec: Vec<u8> = vec![0; min_size + payload_size];
+        let mut echo = MutableEchoRequestPacket::new(&mut vec) // vec[..]).unwrap();
+            .unwrap();
+
+        echo.set_identifier(random::<u16>());
+        echo.set_sequence_number(random::<u16>());
+        echo.set_icmp_type(IcmpTypes::EchoRequest);
+
+        //  set payload
+        let check_sum = icmp_checksum(&echo);
+        echo.set_checksum(check_sum);
+
+        match self.tx.send_to(echo, addr) {
+            x => {
+                println!("Echo sent! {:?}", x);
+            }
+        }
+
+    }
+
+    // pub fn ping(&self, destination:Ipv4) {
+    //     self.tx.send
+    // }
 }
 
 lazy_static! {
-    static ref PROBER: Prober = Prober::setup().unwrap();
+    // pub static ref PROBER: Prober = Prober::setup().unwrap();
 }
