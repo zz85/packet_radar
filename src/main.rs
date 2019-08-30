@@ -37,6 +37,7 @@ mod tcp;
 use tcp::parse_tcp_payload;
 
 mod traceroute;
+use traceroute::handle_time_exceeded;
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
@@ -291,7 +292,7 @@ fn cap(tx: Sender<OwnedMessage>) {
 fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
     let header = Ipv4Packet::new(ethernet.payload());
     if let Some(header) = header {
-        println!("TTL {}", header.get_ttl());
+        // println!("TTL {}", header.get_ttl());
 
         handle_transport_protocol(
             interface_name,
@@ -460,6 +461,8 @@ fn handle_transport_protocol(
 fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr, packet: &[u8]) {
     let icmp_packet = IcmpPacket::new(packet);
     if let Some(icmp_packet) = icmp_packet {
+        let icmp_payload = icmp_packet.payload();
+
         match icmp_packet.get_icmp_type() {
             IcmpTypes::EchoReply => {
                 let echo_reply_packet = echo_reply::EchoReplyPacket::new(packet).unwrap();
@@ -487,14 +490,18 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
             IcmpTypes::TimeExceeded => {
                 let time_exceeded_packet = time_exceeded::TimeExceededPacket::new(packet).unwrap();
                 println!(
-                    "[{}]: ICMP TimeExceeded {} -> {} (seq={:?}, payload={:?})",
+                    "[{}]: ICMP TimeExceeded {} -> {} (seq={:?}, payload={:?})\n{:?}",
                     interface_name,
                     source,
                     destination,
                     time_exceeded_packet,
                     time_exceeded_packet.payload(),
+                    icmp_packet
                 );
+
+                handle_time_exceeded(time_exceeded_packet);
             }
+            // TODO Add Destination unavailable
             _ => println!(
                 "[{}]: ICMP packet {} -> {} (type={:?})",
                 interface_name,
