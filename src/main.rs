@@ -37,7 +37,7 @@ mod tcp;
 use tcp::parse_tcp_payload;
 
 mod traceroute;
-use traceroute::handle_time_exceeded;
+use traceroute::{handle_echo_reply, handle_time_exceeded};
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
@@ -474,6 +474,8 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
                     echo_reply_packet.get_sequence_number(),
                     echo_reply_packet.get_identifier()
                 );
+
+                handle_echo_reply(source, echo_reply_packet);
             }
             IcmpTypes::EchoRequest => {
                 let echo_request_packet = echo_request::EchoRequestPacket::new(packet).unwrap();
@@ -499,7 +501,7 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
                     icmp_packet
                 );
 
-                handle_time_exceeded(time_exceeded_packet);
+                handle_time_exceeded(source, time_exceeded_packet);
             }
             // TODO Add Destination unavailable
             _ => println!(
