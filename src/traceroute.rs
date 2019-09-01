@@ -21,48 +21,133 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 
 lazy_static! {
-    // pub static ref PROBER: Prober = Prober::setup().unwrap();
-
-    // maps ping id and seq id back to the original probe request
-    static ref OUTGOING_PROBES: RwLock<HashMap<String, Probe>> = Default::default();
-
-    // traceroute requests, lookup traceroute info by original search dest
-    static ref TRACEROUTES: RwLock<HashMap<String, Traceroute>> = Default::default();
-
-    // map all addresses - look up individual nodes, gather ttl, avg loss, rtt
+    pub static ref PROBER: RwLock<Prober> = Default::default();
 }
 
+pub struct Prober {
+    // maps ping id and seq id to the original probe request
+    outgoing_probes: HashMap<String, Probe>,
+
+    // traceroute requests, lookup traceroute info by original search dest
+    trace_routes: HashMap<IpAddr, Traceroute>,
+
+    // map all addresses - look up individual nodes, gather ttl, avg loss, rtt
+    prober: IcmpProber, // transport implementation
+}
+
+impl Default for Prober {
+    fn default() -> Prober {
+        Prober::new()
+    }
+}
+
+impl Prober {
+    pub fn new() -> Prober {
+        Prober {
+            outgoing_probes: Default::default(),
+            trace_routes: Default::default(),
+            prober: IcmpProber::setup().unwrap(),
+        }
+    }
+
+    pub fn ping(&mut self, addr: IpAddr) {
+        self.probe_with_ttl(addr, 64);
+    }
+
+    pub fn traceroute(&mut self, addr: IpAddr) {
+        let traceroute = Traceroute::new(addr);
+
+        self.trace_routes
+            .insert(traceroute.destination.clone(), traceroute);
+
+        for i in 0..20 {
+            self.probe_with_ttl(addr, i);
+        }
+    }
+
+    fn probe_with_ttl(&mut self, addr: IpAddr, ttl: u8) {
+        // register probe
+        let probe = Probe::new(addr, ttl);
+        let key = probe.outgoing_key().clone();
+        self.prober.ping_with_ttl(probe);
+        self.outgoing_probes.insert(key, probe);
+    }
+
+    pub fn handle_ping_id(&mut self, source: IpAddr, ping_id: u16, seq_id: u16) {
+        let key = Probe::format_key(ping_id, seq_id);
+
+        if let Some(probe) = self.outgoing_probes.remove(&key) {
+            println!(
+                "Matches probe with ttl {} for dest {}, {}",
+                probe.ttl, probe.addr, source
+            );
+
+            // add results
+            self.trace_routes.get_mut(&probe.addr).map(|trace| {
+                trace.receive_probe(source, probe);
+            });
+        }
+    }
+}
+
+/**
+ * TODO: add event loop with a timer for interval (eg. 250ms)
+ * the loop does
+ *    1. gather probe results (echo reponse, ttl, destination unreachable)
+ *    2. remove idle probes (sent probes without responses)
+ *    3. send pending probes
+ */
+
 struct Traceroute {
-    destination: String,
+    destination: IpAddr,
     probes: Vec<ProbeResult>, // list of probes
                               // TODO map to result? <hop, Info<exceeded, unreachable, reply> + ip>
 }
 
 impl Traceroute {
-    fn new(dest: String) -> Traceroute {
+    fn new(dest: IpAddr) -> Traceroute {
         Traceroute {
             destination: dest,
             probes: Vec::new(),
         }
     }
+
+    fn receive_probe(&mut self, source: IpAddr, probe: Probe) {
+        // TODO clean up big ttls
+        self.probes.push(ProbeResult::Receive {
+            addr: source,
+            rtt: Instant::now().duration_since(probe.sent_time),
+            hop: probe.ttl,
+        });
+
+        self.probes.sort_by(|a, b| a.get_hop().cmp(&b.get_hop()));
+        self.print();
+    }
+
+    fn print(&self) {
+        for (i, pair) in self.probes.iter().enumerate() {
+            println!("{}: {:?}", i, pair);
+        }
+    }
 }
 
 // Probe Request
+#[derive(Debug, Copy, Clone)]
 struct Probe {
     ping_id: u16,
     sequence_id: u16,
     ttl: u8,
-    destination: String,
     sent_time: Instant,
+    addr: IpAddr,
 }
 
 impl Probe {
-    fn new(dest: String, ttl: u8) -> Probe {
+    fn new(addr: IpAddr, ttl: u8) -> Probe {
         Probe {
+            addr: addr,
             ping_id: random::<u16>(),
             sequence_id: random::<u16>(),
             ttl: ttl,
-            destination: dest,
             sent_time: Instant::now(),
         }
     }
@@ -81,7 +166,7 @@ impl fmt::Display for Probe {
         write!(
             f,
             "Probe ({}, {}, {}, {}, {:?})",
-            self.ping_id, self.sequence_id, self.ttl, self.destination, self.sent_time
+            self.ping_id, self.sequence_id, self.ttl, self.addr, self.sent_time
         )
     }
 }
@@ -117,55 +202,24 @@ impl ProbeResult {
 
 // Sends a probe (ICMP, UDP, TCP)
 pub fn test_ping() {
-    let mut prober = Prober::setup().unwrap();
-
-    prober.ping(IpAddr::from(Ipv4Addr::new(1, 1, 1, 1)));
-
-    test_traceroute();
+    PROBER
+        .write()
+        .unwrap()
+        .ping(IpAddr::from(Ipv4Addr::new(1, 1, 1, 1)));
 }
 
 pub fn test_traceroute() {
-    let mut prober = Prober::setup().unwrap();
-
     let addr = IpAddr::from(Ipv4Addr::new(1, 1, 1, 1));
-    let dest = addr.to_string();
 
-    let traceroute = Traceroute::new(dest);
-
-    TRACEROUTES
-        .write()
-        .unwrap()
-        .insert(traceroute.destination.clone(), traceroute);
-
-    for i in 0..20 {
-        prober.ping_with_ttl(addr, i);
-    }
+    PROBER.write().unwrap().traceroute(addr);
 }
 
-pub fn probe_udp(dest: &str) {}
-
-pub fn probe_udp_dest_with_ttl() {}
-
-// unique hosts -> hops
-
-fn icmp_checksum(packet: &MutableEchoRequestPacket) -> u16be {
-    util::checksum(packet.packet(), 1)
-}
-
-pub struct Prober {
+pub struct IcmpProber {
     tx: TransportSender,
 }
 
-/**
- * TODO: add a timer for every interval (eg. 250ms)
- * the loop does
- *    1. gather probe results (echo reponse, ttl, destination unreachable)
- *    2. remove idle probes (sent probes without responses)
- *    3. send pending probes
- */
-
-impl Prober {
-    pub fn setup() -> Option<Prober> {
+impl IcmpProber {
+    pub fn setup() -> Option<IcmpProber> {
         let protocol = Layer4(Ipv4(IpNextHeaderProtocols::Icmp));
 
         let (mut tx, mut rx) = transport_channel(4096, protocol).unwrap();
@@ -177,20 +231,10 @@ impl Prober {
         //     ),
         // };
 
-        Some(Prober { tx })
+        Some(IcmpProber { tx })
     }
 
-    pub fn ping(&mut self, addr: IpAddr) {
-        // https://subinsb.com/default-device-ttl-values/
-
-        self.ping_with_ttl(addr, 64);
-    }
-
-    pub fn ping_with_ttl(&mut self, addr: IpAddr, ttl: u8) {
-        let dest = addr.to_string();
-        // register probe
-        let probe = Probe::new(dest, ttl);
-
+    fn ping_with_ttl(&mut self, probe: Probe) {
         let payload_size = 3;
         let payload = vec![1, 2, 3];
         // MTR sends 36 bytes 0 packet
@@ -205,27 +249,23 @@ impl Prober {
         echo.set_icmp_type(IcmpTypes::EchoRequest);
 
         echo.set_payload(&payload);
-        let check_sum = icmp_checksum(&echo);
+        let check_sum = IcmpProber::icmp_checksum(&echo);
         echo.set_checksum(check_sum);
 
-        if let Err(e) = self.tx.set_ttl(ttl) {
+        if let Err(e) = self.tx.set_ttl(probe.ttl) {
             println!("Error setting ttl {:?}", e);
         }
 
-        OUTGOING_PROBES
-            .write()
-            .unwrap()
-            .insert(probe.outgoing_key(), probe);
-        match self.tx.send_to(echo, addr) {
+        match self.tx.send_to(echo, probe.addr) {
             x => {
                 println!("Echo sent! {:?}", x);
             }
         }
     }
 
-    // pub fn ping(&self, destination:Ipv4) {
-    //     self.tx.send
-    // }
+    fn icmp_checksum(packet: &MutableEchoRequestPacket) -> u16be {
+        util::checksum(packet.packet(), 1)
+    }
 }
 
 pub fn handle_time_exceeded(source: IpAddr, time_exceeded_packet: TimeExceededPacket) {
@@ -257,53 +297,16 @@ pub fn handle_time_exceeded(source: IpAddr, time_exceeded_packet: TimeExceededPa
 
     println!("ping_id {} seq_id {}", ping_id, seq_id);
 
-    handle_ping_id(source, ping_id, seq_id);
+    PROBER
+        .write()
+        .unwrap()
+        .handle_ping_id(source, ping_id, seq_id);
 }
 
 pub fn handle_echo_reply(source: IpAddr, echo_reply: EchoReplyPacket) {
-    handle_ping_id(
+    PROBER.write().unwrap().handle_ping_id(
         source,
         echo_reply.get_identifier(),
         echo_reply.get_sequence_number(),
     );
-}
-
-fn handle_ping_id(source: IpAddr, ping_id: u16, seq_id: u16) {
-    let key = Probe::format_key(ping_id, seq_id);
-
-    if let Some(probe) = OUTGOING_PROBES.write().unwrap().remove(&key) {
-        println!(
-            "Matches probe with ttl {} for dest {}, {}",
-            probe.ttl, probe.destination, source
-        );
-
-        // add results
-        TRACEROUTES
-            .write()
-            .unwrap()
-            .get_mut(&probe.destination)
-            .map(|trace| {
-                trace.probes.push(ProbeResult::Receive {
-                    addr: source,
-                    rtt: Instant::now().duration_since(probe.sent_time),
-                    hop: probe.ttl,
-                });
-
-                /*
-                let results = trace.probes
-                    .iter()
-                    .filter(|s| s.is_receive())
-                    .sort_by(|a, b|  b.hop.cmp(&a.hop));
-
-                for (i, pair) in results.enumerate() {
-                    println!("{}: {:?}", i, pair);
-                }*/
-
-                trace.probes.sort_by(|a, b| a.get_hop().cmp(&b.get_hop()));
-
-                for (i, pair) in trace.probes.iter().enumerate() {
-                    println!("{}: {:?}", i, pair);
-                }
-            });
-    }
 }
