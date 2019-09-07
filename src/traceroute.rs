@@ -17,6 +17,12 @@ use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
+use serde_json;
+use serde::{Deserialize, Serialize};
+
+use crossbeam::channel::{Sender};
+use websocket::message::OwnedMessage;
+
 use std::collections::HashMap;
 use std::sync::RwLock;
 
@@ -33,6 +39,9 @@ pub struct Prober {
 
     // map all addresses - look up individual nodes, gather ttl, avg loss, rtt
     prober: IcmpProber, // transport implementation
+
+    // callback: Box<FnMut()>,
+    tx: Option<Sender<OwnedMessage>>
 }
 
 impl Default for Prober {
@@ -47,7 +56,12 @@ impl Prober {
             outgoing_probes: Default::default(),
             trace_routes: Default::default(),
             prober: IcmpProber::setup().unwrap(),
+            tx: None
         }
+    }
+
+    pub fn set_callback(&mut self, tx: Sender<OwnedMessage>) {
+        self.tx = Some(tx);
     }
 
     pub fn ping(&mut self, addr: IpAddr) {
@@ -82,9 +96,22 @@ impl Prober {
                 probe.ttl, probe.addr, source
             );
 
+            let tx = &self.tx;
+
             // add results
             self.trace_routes.get_mut(&probe.addr).map(|trace| {
                 trace.receive_probe(source, probe);
+
+                // send results over websockets
+                if trace.hop_reached {
+                    if let Some(tx) = tx {
+                        let info = TraceRouteInfo::new(trace.probes.clone(),
+                            probe.addr
+                        );
+                        let payload = serde_json::to_string(&info).unwrap();
+                        tx.send(OwnedMessage::Text(payload)).unwrap();
+                    }
+                }
             });
         }
     }
@@ -102,17 +129,36 @@ struct Traceroute {
     destination: IpAddr,
     probes: Vec<ProbeResult>, // list of probes
                               // TODO map to result? <hop, Info<exceeded, unreachable, reply> + ip>
+    max_hop: u8,
+    hop_reached: bool
 }
 
 impl Traceroute {
-    fn new(dest: IpAddr) -> Traceroute {
-        Traceroute {
+    fn new(dest: IpAddr) -> Self {
+        Self {
             destination: dest,
             probes: Vec::new(),
+            max_hop: std::u8::MAX,
+            hop_reached: false
         }
     }
 
+    fn reset(&mut self) {
+        self.probes = Vec::new();
+        self.max_hop = std::u8::MAX;
+        self.hop_reached = false;
+    }
+
     fn receive_probe(&mut self, source: IpAddr, probe: Probe) {
+        if probe.ttl > self.max_hop {
+            return;
+        }
+
+        if source == self.destination {
+            self.hop_reached = true;
+            self.max_hop = std::cmp::min(self.max_hop, probe.ttl);
+        }
+
         // TODO clean up big ttls
         self.probes.push(ProbeResult::Receive {
             addr: source,
@@ -171,7 +217,26 @@ impl fmt::Display for Probe {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
+struct TraceRouteInfo {
+    data: Vec<ProbeResult>,
+    destination: IpAddr,
+    r#type: String,
+}
+
+impl TraceRouteInfo {
+    fn new(data: Vec<ProbeResult>, destination: IpAddr) -> Self {
+        Self {
+            data: data,
+            r#type: String::from("traceroute"),
+            destination
+        }
+    }
+}
+
+
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 enum ProbeResult {
     Pending {}, // to be sent
     Idle {
@@ -200,6 +265,10 @@ impl ProbeResult {
     }
 }
 
+/**
+ * 
+ */
+
 // Sends a probe (ICMP, UDP, TCP)
 pub fn test_ping() {
     PROBER
@@ -212,6 +281,14 @@ pub fn test_traceroute() {
     let addr = IpAddr::from(Ipv4Addr::new(1, 1, 1, 1));
 
     PROBER.write().unwrap().traceroute(addr);
+}
+
+pub fn traceroute(addr: IpAddr) {
+    PROBER.write().unwrap().traceroute(addr);
+}
+
+pub fn set_callback(tx: Sender<OwnedMessage>) {
+    PROBER.write().unwrap().set_callback(tx);
 }
 
 pub struct IcmpProber {

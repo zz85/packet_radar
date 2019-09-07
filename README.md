@@ -58,14 +58,16 @@ IDEAs / TODO
 - [x] DNS resolution
 - [x] Find local addresses
 - [ ] Whois
-- [ ] Mtr / Ping probes
+- [x] Ping / ICMP Traceroute probes
+- [ ] TCP/UDP trace probes
 - [x] Traffic categorization (UDP, TCP,..
 - [ ] TLS)
 - [x] DNS capture
 - [ ] RTT Analysis
 - [ ] Packet replay
 - [ ] Terminal interface
-- [ ] Visual traceroute
+- [ ] Visual traceroute (maxmind)
 - [ ] TLS Parsing
 - [ ] Quic Packet Parsing
 - [ ] Sankey diagrams
+- [ ] Netstat (process sockets)

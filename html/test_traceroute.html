@@ -1,0 +1,80 @@
+<html>
+<body>
+    <style>
+        body {
+            font-family: monospace;
+        }
+        #holder {
+            width: 100%;
+            height: 100%;
+        }
+
+        .item {
+            width: 100%;
+            height: 20px;
+            overflow: hidden;
+        }
+    </style>
+
+    <script src="js/packet_server.js"></script>
+    <script src="js/stats.js"></script>
+
+    <h2>Traceroute</h2>
+    <input type="text" id="address" value="1.1.1.1" />
+    <button onclick="traceroute()">Trace</button>
+
+
+    <pre id="holder">
+    </pre>
+    <script>
+
+        var info;
+
+        function traceroute() {
+            query_traceroute(address.value, (_info) => {
+                info = _info;
+
+                update();
+            })
+        }
+
+        function update() {
+            console.log('got info', info);
+            holder.innerText = `Destination: ${info.destination}\n`;
+
+            info.data.forEach(trace => {
+                if (trace.Receive) {
+                    let {addr, hop, rtt} = trace.Receive;
+                    rtt = rtt.secs + rtt.nanos / 1e9
+
+                    if (!hop) return;
+
+                    check_host(addr);
+
+                    holder.innerText += `#${hop}: \t${addr} \t${(rtt * 1000).toFixed(3)}ms \t${lookup(addr) || ''} \n`;
+                }
+            })
+        }
+
+        // Tail log
+        connect_packet_server(data => {
+            // const { src, dest, len, src_port, dest_port } = data;
+
+            // // console.log(data);
+
+            // var div = document.createElement('div');
+            // div.className = 'item';
+            // holder.appendChild(div);
+            // tail_buffer.push(div);
+            // div.innerText = `[${new Date().toLocaleString()}] ${src} :${src_port} > ${dest} :${dest_port} (${len} bytes)`;
+
+            // if (tail_buffer.length > 100) {
+            //     var last = tail_buffer.shift();
+            //     last.remove();
+            // }
+
+            // div.scrollIntoView(false);
+        });
+    </script>
+</body>
+</html>

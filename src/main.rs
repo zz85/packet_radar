@@ -23,7 +23,7 @@ use websocket::sync::Server;
 use std::env;
 use std::net::IpAddr;
 use std::net::TcpStream;
-use std::sync::mpsc::{self, Receiver, Sender};
+// use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -45,6 +45,8 @@ const STATS: bool = false;
 
 use dipstick::{stats_all, AtomicBucket, InputScope, Output, ScheduleFlush, Stream};
 use std::io;
+
+use crossbeam::channel::{unbounded, Receiver, Sender};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct PacketInfo {
@@ -85,9 +87,12 @@ fn main() {
 
     let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
 
-    let (tx, rx) = mpsc::channel();
+    // let (tx, rx) = mpsc::channel();
+    let (tx, rx) = unbounded();
 
     spawn_broadcast(rx, clients.clone());
+
+    traceroute::set_callback(tx.clone());
 
     thread::spawn(move || cap(tx));
 
@@ -114,7 +119,14 @@ fn main() {
                     }
                     OwnedMessage::Text(text) => {
                         // json parse request here
-                        let data: ClientRequest = serde_json::from_str(&text).unwrap();
+                        let data = serde_json::from_str(&text);
+                        let data: ClientRequest = match data {
+                            Ok(data) => data,
+                            Err(error) => {
+                                println!("Problem parsing: {:?}", error);
+                                break;
+                            },
+                        };
 
                         let req = data.req;
                         // println!("data req: {}, val: {}", req, data.value);
@@ -160,6 +172,15 @@ fn main() {
                                             .drain_filter(|c| c.send_message(&message).is_err());
                                     }
                                 }
+                            }
+                            "traceroute" => {
+                                let ip = data.value;
+                                println!("ip {}", ip);
+                                // ws.send(JSON.stringify({ req: 'traceroute', value: '1.1.1.1'}))
+                                ip.parse().map(|addr| {
+                                    println!("Addr {}", addr);
+                                    traceroute::traceroute(addr);
+                                });
                             }
                             _ => {}
                         }
