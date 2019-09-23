@@ -1,0 +1,108 @@
+<html>
+<body>
+<style>
+        body {
+            font-family: monospace;
+        }
+        #holder {
+            width: 100%;
+            height: 100%;
+        }
+
+        .item {
+            width: 100%;
+            height: 20px;   
+        }
+    </style>
+
+    <script src="js/packet_server.js"></script>
+    <script src="js/stats.js"></script>
+    <script src="js/links.js"></script>
+
+    <div id="legend">
+        Legend: 
+    </div>
+    
+    <script>
+        var canvas = document.createElement('canvas');
+        document.body.appendChild(canvas);
+        var dpr = window.devicePixelRatio;
+        canvas.width = innerWidth * dpr;
+        canvas.height = innerHeight * dpr;
+        canvas.style.width = innerWidth +  'px';
+        canvas.style.height = innerHeight + 'px';
+        var ctx = canvas.getContext('2d');
+
+        var grid_size = 15;
+        var running = 0;
+
+        var max_size = 0;
+        ctx.scale(dpr, dpr);
+
+        var cols = innerWidth / grid_size | 0;
+        var rows = innerHeight / grid_size | 0;
+        var wrap_around = cols * rows;
+
+        var colorbrewer = [
+            // PuBu
+            // "#fff7fb","#ece7f2","#d0d1e6","#a6bddb","#74a9cf","#3690c0","#0570b0","#045a8d","#023858"
+            // purple
+            // "#fcfbfd","#efedf5","#dadaeb","#bcbddc","#9e9ac8","#807dba","#6a51a3","#54278f","#3f007d"
+            // red  grey
+            // "#b2182b","#d6604d","#f4a582","#fddbc7","#ffffff","#e0e0e0","#bababa","#878787","#4d4d4d"
+            "#d53e4f","#f46d43","#fdae61","#fee08b","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd"
+        ].reverse();
+        var limits = [];
+        for (var i = 0; i < colorbrewer.length; i++) {
+            var s = document.createElement('span');
+
+            s.style.display = 'inline-block';
+            s.style.width = '20px';
+            s.style.height = '20px';
+            s.style.background = colorbrewer[i];
+
+            limits[i] = 180 * (i + 1);
+
+            var txt = document.createTextNode(limits[i]);
+            legend.appendChild(txt);
+            legend.appendChild(s);
+        }
+
+        connect_packet_server(data => {
+            const { src, dest, len } = data;
+
+            if (len > max_size) max_size = len;
+
+            var i;
+            for (i = 0; i < limits.length - 1; i++) {
+                if (limits[i] > len) break;
+            }
+
+            var pt = running % wrap_around;
+
+            ctx.fillStyle = colorbrewer[i];
+            ctx.beginPath()
+            ctx.rect(pt % cols * grid_size,
+                (pt / cols |  0) * grid_size,
+                grid_size, grid_size
+            );
+            ctx.fill();
+            ctx.stroke();
+
+            running++;
+
+            pt = running % wrap_around;
+
+            ctx.fillStyle = 'yellow';
+            ctx.beginPath()
+            ctx.rect(pt % cols * grid_size,
+                (pt / cols |  0) * grid_size,
+                grid_size, grid_size
+            );
+            ctx.fill();
+            ctx.stroke();
+        });
+
+    </script>
+</body>
+</html>
