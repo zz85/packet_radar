@@ -48,6 +48,9 @@ use std::io;
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
+mod processes;
+use processes::netstats;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct PacketInfo {
     len: u16,
@@ -78,6 +81,8 @@ fn default_type() -> String {
 
 fn main() {
     let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
+
+    netstats();
 
     println!(
         "Websocket server listening on {}. Open html/packet_viz.html",
