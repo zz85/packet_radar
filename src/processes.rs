@@ -8,7 +8,6 @@ use netstat::{
 use sysinfo::{NetworkExt, Pid, ProcessExt, ProcessorExt, Signal, System, SystemExt};
 use sysinfo::Signal::*;
 
-
 /* TODO build a map so you can look up
 5 tuple (udp, sip, sp, dip, dp)  -> to processes
 

@@ -51,6 +51,9 @@ use crossbeam::channel::{unbounded, Receiver, Sender};
 mod processes;
 use processes::netstats;
 
+mod geoip;
+use geoip::geo_lookup;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct PacketInfo {
     len: u16,
@@ -82,7 +85,9 @@ fn default_type() -> String {
 fn main() {
     let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
 
-    netstats();
+    // Test experimentation
+    // netstats();
+    geo_lookup();
 
     println!(
         "Websocket server listening on {}. Open html/packet_viz.html",
@@ -251,8 +256,8 @@ fn cap(tx: Sender<OwnedMessage>) {
     let bytes = bucket.counter("bytes: ");
     let packets = bucket.marker("packets: ");
 
-    traceroute::test_ping();
-    traceroute::test_traceroute();
+    // traceroute::test_ping();
+    // traceroute::test_traceroute();
 
     loop {
         i += 1;
