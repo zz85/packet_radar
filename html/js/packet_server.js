@@ -61,6 +61,9 @@ function connect_packet_server(handler) {
                             query_callbacks.delete(cb_key);
                         }
                         break;
+                    case 'geoip':
+                    default:
+                        console.log(data);
                 }
 
                 return;

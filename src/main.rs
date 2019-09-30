@@ -12,10 +12,6 @@ use pnet::packet::udp::UdpPacket;
 
 use pnet::packet::*;
 
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::convert::TryFrom;
-
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::sync::Server;
@@ -23,7 +19,6 @@ use websocket::sync::Server;
 use std::env;
 use std::net::IpAddr;
 use std::net::TcpStream;
-// use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -46,36 +41,21 @@ const STATS: bool = false;
 use dipstick::{stats_all, AtomicBucket, InputScope, Output, ScheduleFlush, Stream};
 use std::io;
 
+use std::convert::TryFrom;
+
 use crossbeam::channel::{unbounded, Receiver, Sender};
 
 mod processes;
 use processes::netstats;
 
+mod structs;
+use structs::{PacketInfo, ClientRequest};
+
+mod client_connection;
+use client_connection::handle_clients;
+
 mod geoip;
-use geoip::test_lookups;
-
-#[derive(Serialize, Deserialize, Debug)]
-struct PacketInfo {
-    len: u16,
-    src: String,
-    dest: String,
-    src_port: u16,
-    dest_port: u16,
-    t: String, // type: t for tcp, u for udp
-               // todo timestamp + id
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ClientRequest {
-    req: String,
-    #[serde(default = "default_type")]
-    r#type: String,
-    value: String,
-}
-
-fn default_type() -> String {
-    "".to_string()
-}
+use geoip::{test_lookups, city_lookup, asn_lookup};
 
 /**
  * This file starts a packet capture and a websocket server
@@ -106,106 +86,7 @@ fn main() {
 
     thread::spawn(move || cap(tx));
 
-    for connection in server.filter_map(Result::ok) {
-        let clients = clients.clone();
-
-        thread::spawn(move || {
-            let ws = connection.accept().unwrap();
-            let ip = ws.peer_addr().unwrap();
-            let (mut rx, mut _tx) = ws.split().unwrap();
-
-            // add writer stream to shared vec
-            clients.write().unwrap().push(_tx);
-
-            for message in rx.incoming_messages() {
-                let message = message.unwrap();
-
-                match message {
-                    OwnedMessage::Close(_) => {
-                        // let message = OwnedMessage::Close(None);
-                        // tx.send_message(&message).unwrap();
-                        println!("Client {} disconnected", ip);
-                        return;
-                    }
-                    OwnedMessage::Text(text) => {
-                        // json parse request here
-                        let data = serde_json::from_str(&text);
-                        let data: ClientRequest = match data {
-                            Ok(data) => data,
-                            Err(error) => {
-                                println!("Problem parsing: {:?}", error);
-                                break;
-                            },
-                        };
-
-                        let req = data.req;
-                        // println!("data req: {}, val: {}", req, data.value);
-
-                        match req.as_ref() {
-                            "lookup" => {
-                                // handle look up address
-                                let ip = data.value;
-                                let hostname = reverse_lookup(ip.clone());
-                                // println!("Name look up from: {} to {}", destination, hostname);
-
-                                let p = json!({
-                                    "type": "lookup_addr",
-                                    "ip": ip,
-                                    "hostname": hostname,
-                                })
-                                .to_string();
-
-                                let message = OwnedMessage::Text(p);
-                                clients
-                                    .write()
-                                    .unwrap()
-                                    .drain_filter(|c| c.send_message(&message).is_err());
-                            }
-                            "local_addr" => {
-                                let interfaces = pnet::datalink::interfaces();
-                                for interface in interfaces {
-                                    // println!("Interface {:?}", interface.ips);
-
-                                    for ip in interface.ips {
-                                        let src = ip.ip();
-
-                                        let p = json!({
-                                            "type": "local_addr",
-                                            "ip": src,
-                                        })
-                                        .to_string();
-
-                                        let message = OwnedMessage::Text(p);
-                                        clients
-                                            .write()
-                                            .unwrap()
-                                            .drain_filter(|c| c.send_message(&message).is_err());
-                                    }
-                                }
-                            }
-                            "traceroute" => {
-                                let ip = data.value;
-                                println!("ip {}", ip);
-                                // ws.send(JSON.stringify({ req: 'traceroute', value: '1.1.1.1'}))
-                                ip.parse().map(|addr| {
-                                    println!("Addr {}", addr);
-                                    traceroute::traceroute(addr);
-                                });
-                            }
-                            _ => {}
-                        }
-
-                        // handle filtering
-                        // handle get buffers
-                    }
-                    OwnedMessage::Binary(buf) => {}
-                    others => {
-                        println!("ok {:?}", others);
-                    }
-                }
-            }
-        });
-    }
+    handle_clients(server, clients);
 }
 
 fn spawn_broadcast(rx: Receiver<OwnedMessage>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
