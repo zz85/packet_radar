@@ -34,7 +34,9 @@ class CircularBuffer {
 var buffer = new CircularBuffer();
 var ips = new Map();
 var local_ips = new Set();
+
 var query_callbacks = new Map();
+var topic_subscribers = new Map();
 
 // connects to rust websockets server
 // and emits events
@@ -62,6 +64,11 @@ function connect_packet_server(handler) {
                         }
                         break;
                     case 'geoip':
+                        var subs = topic_subscribers.get('geoip');
+                        if (subs) {
+                            subs.forEach(s => s(data));
+                        }
+                        break;
                     default:
                         console.log(data);
                 }
@@ -100,6 +107,18 @@ function query_lookup(ip) {
 
 function query_host_ip() {
     query({req: 'local_addr', value: '', type: ''});
+}
+
+function query_geo_ip(ip) {
+    query({req: 'geoip', value: ip, type: ''});
+}
+
+function subscribe(topic, handler) {
+    if (!topic_subscribers.has(topic)) {
+        topic_subscribers.set(topic, []);
+    }
+
+    topic_subscribers.get(topic).push(handler);
 }
 
 function query_traceroute(ip, cb) {

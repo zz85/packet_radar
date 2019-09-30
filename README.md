@@ -66,8 +66,11 @@ IDEAs / TODO
 - [ ] RTT Analysis
 - [ ] Packet replay
 - [ ] Terminal interface
-- [ ] Visual traceroute (maxmind)
+- [ ] Visual traceroute
+- [x] Geoip
 - [ ] TLS Parsing
 - [ ] Quic Packet Parsing
 - [ ] Sankey diagrams
-- [ ] Netstat (process sockets)
+- [ ] Netstat / Socket listings
+- [ ] Break connections by processes
+

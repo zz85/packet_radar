@@ -11,6 +11,7 @@ lazy_static! {
     static ref ASN_READER: Reader<Vec<u8>> = Reader::open_readfile("geodata/mmdb/GeoLite2-ASN.mmdb").unwrap();
 }
 
+// TODO filter internal network ip address and do not panic here!
 pub fn city_lookup(ip: IpAddr) -> City {
     CITY_READER.lookup(ip).unwrap()
 }
@@ -26,7 +27,6 @@ pub fn test_geo_lookup() {
     let ip: IpAddr = FromStr::from_str("1.1.1.1").unwrap();
     // 89.160.20.112
     let city: City = reader.lookup(ip).unwrap();
-    println!("City {:?}", city);
 
     // city.location.latitude/longitude/time_zone
     // city.names.en

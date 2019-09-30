@@ -63,11 +63,7 @@ pub fn handle_clients(server: WsServer<websocket::server::NoTlsAcceptor, std::ne
                                 })
                                 .to_string();
 
-                                let message = OwnedMessage::Text(p);
-                                clients
-                                    .write()
-                                    .unwrap()
-                                    .drain_filter(|c| c.send_message(&message).is_err());
+                                broadcast(clients.clone(), p);
                             }
                             "local_addr" => {
                                 let interfaces = pnet::datalink::interfaces();
@@ -83,11 +79,7 @@ pub fn handle_clients(server: WsServer<websocket::server::NoTlsAcceptor, std::ne
                                         })
                                         .to_string();
 
-                                        let message = OwnedMessage::Text(p);
-                                        clients
-                                            .write()
-                                            .unwrap()
-                                            .drain_filter(|c| c.send_message(&message).is_err());
+                                        broadcast(clients.clone(), p);
                                     }
                                 }
                             }
@@ -146,11 +138,23 @@ fn get_geo_ip(ip:String) -> Option<String> {
     match ip.parse() {
         Ok(addr) => {
             let city = city_lookup(addr);
+            println!("City {:?}", city);
             let asn = asn_lookup(addr);
+            println!("Asn {:?}", asn);
 
             let loc = city.location?;
             let country = city.registered_country?;
             // let rep = city.represented_country?;
+
+            // let city_names = match city.city {
+            //     Some(city) => {
+            //         let city = city;
+            //         let names = city.names;
+            //         let name = names?.get("en");
+            //         name
+            //     },
+            //     None => None
+            // };
 
             let p = json!({
                 "type": "geoip",
@@ -160,6 +164,7 @@ fn get_geo_ip(ip:String) -> Option<String> {
                 "tz": loc.time_zone,
                 "country": country.names?.get("en"),
                 // "rep": rep.names,
+                // "city": city_names,
                 "asn": asn.autonomous_system_organization,
             }).to_string();
 
