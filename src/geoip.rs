@@ -6,7 +6,20 @@ use std::str::FromStr;
 
 use maxminddb;
 
-pub fn geo_lookup() {
+lazy_static! {
+    static ref CITY_READER: Reader<Vec<u8>> = Reader::open_readfile("geodata/mmdb/GeoLite2-City.mmdb").unwrap();
+    static ref ASN_READER: Reader<Vec<u8>> = Reader::open_readfile("geodata/mmdb/GeoLite2-ASN.mmdb").unwrap();
+}
+
+pub fn city_lookup(ip: IpAddr) -> City {
+    CITY_READER.lookup(ip).unwrap()
+}
+
+pub fn asn_lookup(ip: IpAddr) -> Asn {
+    ASN_READER.lookup(ip).unwrap()
+}
+
+pub fn test_geo_lookup() {
     let filename = "geodata/mmdb/GeoLite2-City.mmdb";
     let reader = Reader::open_readfile(filename).unwrap();
 
@@ -19,18 +32,15 @@ pub fn geo_lookup() {
     // city.names.en
     // city.country.iso_code
     let iso_code = city.country.and_then(|cy| cy.iso_code);
-    
-    asn_lookip();
+
 }
 
-pub fn asn_lookip() {
-    let filename = "geodata/mmdb/GeoLite2-ASN.mmdb";
-    let reader = Reader::open_readfile(filename).unwrap();
-
+pub fn test_lookups() {
     let ip: IpAddr = FromStr::from_str("1.1.1.1").unwrap();
-    // 89.160.20.112
-    let asn: Asn = reader.lookup(ip).unwrap();
-    // autonomous_system_number
-    // autonomous_system_organization
+
+    let city = city_lookup(ip);
+    println!("city {:?}", city);
+
+    let asn = asn_lookup(ip);
     println!("asn {:?}", asn);
 }

@@ -52,7 +52,7 @@ mod processes;
 use processes::netstats;
 
 mod geoip;
-use geoip::geo_lookup;
+use geoip::test_lookups;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct PacketInfo {
@@ -87,7 +87,7 @@ fn main() {
 
     // Test experimentation
     // netstats();
-    geo_lookup();
+    test_lookups();
 
     println!(
         "Websocket server listening on {}. Open html/packet_viz.html",
