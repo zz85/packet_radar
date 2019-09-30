@@ -115,7 +115,7 @@ fn cap(tx: Sender<OwnedMessage>) {
 
     let mut cap = Capture::from_device(name)
         .unwrap()
-        .timeout(1000)
+        .timeout(1)
         .promisc(true)
         // .snaplen(5000)
         .open()

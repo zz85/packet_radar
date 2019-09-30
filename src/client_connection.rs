@@ -137,9 +137,21 @@ fn get_geo_ip(ip:String) -> Option<String> {
     println!("Geo Ip {}", ip);
     match ip.parse() {
         Ok(addr) => {
-            let city = city_lookup(addr);
+            let city = match city_lookup(addr) {
+                Ok(city) => city,
+                Err(e) => {
+                    println!("Cant look up {:?}", e);
+                    return None
+                }
+            };
+            let asn = match asn_lookup(addr) {
+                Ok(asn) => asn,
+                Err(e) => {
+                    println!("Cant look up {:?}", e);
+                    return None
+                }
+            };
             println!("City {:?}", city);
-            let asn = asn_lookup(addr);
             println!("Asn {:?}", asn);
 
             let loc = city.location?;

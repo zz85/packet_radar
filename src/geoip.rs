@@ -12,12 +12,12 @@ lazy_static! {
 }
 
 // TODO filter internal network ip address and do not panic here!
-pub fn city_lookup(ip: IpAddr) -> City {
-    CITY_READER.lookup(ip).unwrap()
+pub fn city_lookup(ip: IpAddr) -> Result<City, MaxMindDBError> {
+    CITY_READER.lookup(ip)
 }
 
-pub fn asn_lookup(ip: IpAddr) -> Asn {
-    ASN_READER.lookup(ip).unwrap()
+pub fn asn_lookup(ip: IpAddr) -> Result<Asn, MaxMindDBError> {
+    ASN_READER.lookup(ip)
 }
 
 pub fn test_geo_lookup() {
