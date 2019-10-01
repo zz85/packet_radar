@@ -17,10 +17,10 @@ use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
-use serde_json;
 use serde::{Deserialize, Serialize};
+use serde_json;
 
-use crossbeam::channel::{Sender};
+use crossbeam::channel::Sender;
 use websocket::message::OwnedMessage;
 
 use std::collections::HashMap;
@@ -41,7 +41,7 @@ pub struct Prober {
     prober: IcmpProber, // transport implementation
 
     // callback: Box<FnMut()>,
-    tx: Option<Sender<OwnedMessage>>
+    tx: Option<Sender<OwnedMessage>>,
 }
 
 impl Default for Prober {
@@ -56,7 +56,7 @@ impl Prober {
             outgoing_probes: Default::default(),
             trace_routes: Default::default(),
             prober: IcmpProber::setup().unwrap(),
-            tx: None
+            tx: None,
         }
     }
 
@@ -105,9 +105,7 @@ impl Prober {
                 // send results over websockets
                 if trace.hop_reached {
                     if let Some(tx) = tx {
-                        let info = TraceRouteInfo::new(trace.probes.clone(),
-                            probe.addr
-                        );
+                        let info = TraceRouteInfo::new(trace.probes.clone(), probe.addr);
                         let payload = serde_json::to_string(&info).unwrap();
                         tx.send(OwnedMessage::Text(payload)).unwrap();
                     }
@@ -128,9 +126,9 @@ impl Prober {
 struct Traceroute {
     destination: IpAddr,
     probes: Vec<ProbeResult>, // list of probes
-                              // TODO map to result? <hop, Info<exceeded, unreachable, reply> + ip>
+    // TODO map to result? <hop, Info<exceeded, unreachable, reply> + ip>
     max_hop: u8,
-    hop_reached: bool
+    hop_reached: bool,
 }
 
 impl Traceroute {
@@ -139,7 +137,7 @@ impl Traceroute {
             destination: dest,
             probes: Vec::new(),
             max_hop: std::u8::MAX,
-            hop_reached: false
+            hop_reached: false,
         }
     }
 
@@ -229,12 +227,10 @@ impl TraceRouteInfo {
         Self {
             data: data,
             r#type: String::from("traceroute"),
-            destination
+            destination,
         }
     }
 }
-
-
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 enum ProbeResult {
@@ -266,7 +262,7 @@ impl ProbeResult {
 }
 
 /**
- * 
+ *
  */
 
 // Sends a probe (ICMP, UDP, TCP)

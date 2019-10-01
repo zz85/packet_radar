@@ -73,4 +73,6 @@ IDEAs / TODO
 - [ ] Sankey diagrams
 - [ ] Netstat / Socket listings
 - [ ] Break connections by processes
+- [ ] What's my ip whatsmyip
+- [ ] ASN breakdown
 

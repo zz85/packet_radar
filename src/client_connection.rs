@@ -1,19 +1,22 @@
-use websocket::server::WsServer;
-use websocket::sender::Writer;
 use websocket::message::OwnedMessage;
+use websocket::sender::Writer;
+use websocket::server::WsServer;
 
+use std::net::TcpStream;
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::net::TcpStream;
 
 use serde_json::json;
 
-use super::{PacketInfo, ClientRequest};
-use super::{parse_dns, reverse_lookup};
 use super::traceroute;
-use super::{city_lookup, asn_lookup};
+use super::{asn_lookup, city_lookup};
+use super::{parse_dns, reverse_lookup};
+use super::{ClientRequest, PacketInfo};
 
-pub fn handle_clients(server: WsServer<websocket::server::NoTlsAcceptor, std::net::TcpListener>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
+pub fn handle_clients(
+    server: WsServer<websocket::server::NoTlsAcceptor, std::net::TcpListener>,
+    clients: Arc<RwLock<Vec<Writer<TcpStream>>>>,
+) {
     for connection in server.filter_map(Result::ok) {
         let clients = clients.clone();
 
@@ -43,7 +46,7 @@ pub fn handle_clients(server: WsServer<websocket::server::NoTlsAcceptor, std::ne
                             Err(error) => {
                                 println!("Problem parsing: {:?}", error);
                                 break;
-                            },
+                            }
                         };
 
                         let req = data.req;
@@ -96,16 +99,11 @@ pub fn handle_clients(server: WsServer<websocket::server::NoTlsAcceptor, std::ne
                                         println!("Can't parse ip {}, {}", ip, e);
                                     }
                                 };
-                            },
+                            }
                             "geoip" => {
                                 let ip = data.value;
-                                // if let Some(r) = get_geo_ip(ip) {
-                                //     broadcast(clients.clone(), r);
-                                // };
-
-                                match get_geo_ip(ip) {
-                                    Some(r) => broadcast(clients.clone(), r),
-                                    None => { println!("FAIL") }
+                                if let Some(r) = get_geo_ip(ip) {
+                                    broadcast(clients.clone(), r)
                                 };
                             }
                             _ => {}
@@ -124,7 +122,7 @@ pub fn handle_clients(server: WsServer<websocket::server::NoTlsAcceptor, std::ne
     }
 }
 
-fn broadcast(clients: Arc<RwLock<Vec<Writer<TcpStream>>>>, text:String) {
+fn broadcast(clients: Arc<RwLock<Vec<Writer<TcpStream>>>>, text: String) {
     println!("Broadcasting... {}", text);
     let message = OwnedMessage::Text(text);
     clients
@@ -133,7 +131,7 @@ fn broadcast(clients: Arc<RwLock<Vec<Writer<TcpStream>>>>, text:String) {
         .drain_filter(|c| c.send_message(&message).is_err());
 }
 
-fn get_geo_ip(ip:String) -> Option<String> {
+fn get_geo_ip(ip: String) -> Option<String> {
     println!("Geo Ip {}", ip);
     match ip.parse() {
         Ok(addr) => {
@@ -141,14 +139,14 @@ fn get_geo_ip(ip:String) -> Option<String> {
                 Ok(city) => city,
                 Err(e) => {
                     println!("Cant look up {:?}", e);
-                    return None
+                    return None;
                 }
             };
             let asn = match asn_lookup(addr) {
                 Ok(asn) => asn,
                 Err(e) => {
                     println!("Cant look up {:?}", e);
-                    return None
+                    return None;
                 }
             };
             println!("City {:?}", city);
@@ -158,15 +156,10 @@ fn get_geo_ip(ip:String) -> Option<String> {
             let country = city.registered_country?;
             // let rep = city.represented_country?;
 
-            // let city_names = match city.city {
-            //     Some(city) => {
-            //         let city = city;
-            //         let names = city.names;
-            //         let name = names?.get("en");
-            //         name
-            //     },
-            //     None => None
-            // };
+            let city_name = city
+                .city
+                .map(|c| c.names.unwrap().get("en").unwrap().clone())
+                .or(None);
 
             let p = json!({
                 "type": "geoip",
@@ -176,9 +169,10 @@ fn get_geo_ip(ip:String) -> Option<String> {
                 "tz": loc.time_zone,
                 "country": country.names?.get("en"),
                 // "rep": rep.names,
-                // "city": city_names,
+                "city": city_name,
                 "asn": asn.autonomous_system_organization,
-            }).to_string();
+            })
+            .to_string();
 
             Some(p)
         }
