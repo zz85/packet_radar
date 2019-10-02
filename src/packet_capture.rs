@@ -7,6 +7,7 @@ use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
+use pnet::datalink::{self, NetworkInterface};
 
 use pnet::packet::*;
 
@@ -35,6 +36,9 @@ const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
 const STATS: bool = false;
 
+const PCAP: bool = false;
+
+
 pub fn cap(tx: Sender<OwnedMessage>) {
     println!("Running pcap...");
     println!("Devices {:?}", Device::list());
@@ -59,6 +63,36 @@ pub fn cap(tx: Sender<OwnedMessage>) {
     // does a bpf filter
     // cap.filter(&"udp").unwrap();
 
+    use pnet::datalink::Channel::Ethernet;
+
+    let interface_names_match = |iface: &NetworkInterface| iface.name == name;
+
+    // Find the network interface with the provided name
+    let interfaces = datalink::interfaces();
+    let interface = interfaces.into_iter().filter(interface_names_match).next().unwrap();
+
+    // Create a channel to receive on
+    let (_, ether_rx) = match datalink::channel(&interface, Default::default()) {
+        Ok(Ethernet(tx, rx)) => (tx, rx),
+        Ok(_) => panic!("packetdump: unhandled channel type: {}"),
+        Err(e) => panic!("packetdump: unable to create channel: {}", e),
+    };
+
+
+    let mut iter = ether_rx;
+
+    if !PCAP {
+        loop {
+            match iter.next() {
+                Ok(packet) => {
+                    let ether = EthernetPacket::new(packet).unwrap();
+                    handle_ethernet_packet(&ether, &tx);
+                }
+                Err(e) => panic!("packetdump: unable to receive packet: {}", e),
+            }
+        }
+    }
+
     // set up metrics
     let bucket = AtomicBucket::new();
 
@@ -75,6 +109,7 @@ pub fn cap(tx: Sender<OwnedMessage>) {
     // traceroute::test_ping();
     // traceroute::test_traceroute();
 
+    if PCAP {
     loop {
         i += 1;
         match cap.next() {
@@ -95,30 +130,7 @@ pub fn cap(tx: Sender<OwnedMessage>) {
                 // .ts
 
                 let ether = EthernetPacket::new(&packet).unwrap();
-                let ether_type = ether.get_ethertype();
-
-                match ether_type {
-                    EtherTypes::Ipv4 => {
-                        // print!("IPV4 ");
-                        handle_ipv4_packet("meow", &ether, &tx);
-                    }
-                    EtherTypes::Ipv6 => {
-                        // print!("IPV6 ");
-                        handle_ipv6_packet("woof", &ether, &tx);
-                    }
-                    EtherTypes::Arp => {
-                        // println!("ARP");
-                        continue;
-                    }
-                    _ => {
-                        // 	println!(
-                        // 	"Unknown packet: {} > {}; ethertype: {:?}",
-                        // 	ether.get_source(),
-                        // 	ether.get_destination(),
-                        // 	ether.get_ethertype()
-                        // )
-                    }
-                }
+                handle_ethernet_packet(&ether, &tx);
             }
             Err(_) => {
                 // println!("Error! {:?}", e);
@@ -133,6 +145,33 @@ pub fn cap(tx: Sender<OwnedMessage>) {
             );
             bucket.stats(stats_all);
             bucket.flush_to(&Stream::to_stdout().new_scope()).unwrap();
+        }
+    }
+    }
+}
+
+fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<OwnedMessage>) {
+    let ether_type = ether.get_ethertype();
+
+    match ether_type {
+        EtherTypes::Ipv4 => {
+            // print!("IPV4 ");
+            handle_ipv4_packet("meow", &ether, &tx);
+        }
+        EtherTypes::Ipv6 => {
+            // print!("IPV6 ");
+            handle_ipv6_packet("woof", &ether, &tx);
+        }
+        EtherTypes::Arp => {
+            // println!("ARP");
+        }
+        _ => {
+            // 	println!(
+            // 	"Unknown packet: {} > {}; ethertype: {:?}",
+            // 	ether.get_source(),
+            // 	ether.get_destination(),
+            // 	ether.get_ethertype()
+            // )
         }
     }
 }
