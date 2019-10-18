@@ -38,6 +38,16 @@ const STATS: bool = false;
 
 const PCAP: bool = false;
 
+fn is_local(ip: IpAddr) -> bool {
+    let interfaces = pnet::datalink::interfaces();
+    for interface in interfaces {
+        for ip in interface.ips {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 pub fn cap(tx: Sender<OwnedMessage>) {
     println!("Running pcap...");
@@ -77,7 +87,6 @@ pub fn cap(tx: Sender<OwnedMessage>) {
         Ok(_) => panic!("packetdump: unhandled channel type: {}"),
         Err(e) => panic!("packetdump: unable to create channel: {}", e),
     };
-
 
     let mut iter = ether_rx;
 
@@ -282,8 +291,8 @@ fn handle_tcp_packet(
             );
         }
 
-        // should add locality to prevent collison
-        let key = match source < destination {
+        // generate a key is uniquely id the 5 tuple
+        let key = match source < destination { // is_local(source)
             true => format!(
                 "tcp_{}:{}_{}:{}",
                 source,
@@ -302,6 +311,10 @@ fn handle_tcp_packet(
 
         // tcp.get_source()
         // tcp.get_destination()
+        // tcp.get_acknowledgement()
+        // get_sequence
+        // options raw
+        // get window
 
         let packet_info = PacketInfo {
             len: u16::try_from(tcp.packet_size()).unwrap(),
@@ -318,7 +331,7 @@ fn handle_tcp_packet(
         // strip tcp headers
         let packet = tcp.payload();
 
-        parse_tcp_payload(packet);
+        parse_tcp_payload(packet, &key);
     } else {
         println!("[{}]: Malformed TCP Packet", interface_name);
     }
