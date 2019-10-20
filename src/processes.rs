@@ -1,6 +1,5 @@
 use netstat::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
 
-use sysinfo::Signal::*;
 use sysinfo::{NetworkExt, Pid, ProcessExt, ProcessorExt, Signal, System, SystemExt};
 
 /* TODO build a map so you can look up

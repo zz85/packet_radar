@@ -1,4 +1,5 @@
 use pcap::{Capture, Device};
+use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::icmp::{echo_reply, echo_request, time_exceeded, IcmpPacket, IcmpTypes};
 use pnet::packet::icmpv6::Icmpv6Packet;
@@ -7,7 +8,6 @@ use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
-use pnet::datalink::{self, NetworkInterface};
 
 use pnet::packet::*;
 
@@ -79,7 +79,11 @@ pub fn cap(tx: Sender<OwnedMessage>) {
 
     // Find the network interface with the provided name
     let interfaces = datalink::interfaces();
-    let interface = interfaces.into_iter().filter(interface_names_match).next().unwrap();
+    let interface = interfaces
+        .into_iter()
+        .filter(interface_names_match)
+        .next()
+        .unwrap();
 
     // Create a channel to receive on
     let (_, ether_rx) = match datalink::channel(&interface, Default::default()) {
@@ -119,43 +123,43 @@ pub fn cap(tx: Sender<OwnedMessage>) {
     // traceroute::test_traceroute();
 
     if PCAP {
-    loop {
-        i += 1;
-        match cap.next() {
-            Ok(packet) => {
-                bytes.count(packet.len());
-                packets.mark();
-                // println!("received packet! {:?}", packet);
-                let header = packet.header;
-                if header.caplen != header.len {
-                    println!(
-                        "Warning bad packet.. len {}: caplen: {}, header len: {}",
-                        packet.len(),
-                        header.caplen,
-                        header.len
-                    );
+        loop {
+            i += 1;
+            match cap.next() {
+                Ok(packet) => {
+                    bytes.count(packet.len());
+                    packets.mark();
+                    // println!("received packet! {:?}", packet);
+                    let header = packet.header;
+                    if header.caplen != header.len {
+                        println!(
+                            "Warning bad packet.. len {}: caplen: {}, header len: {}",
+                            packet.len(),
+                            header.caplen,
+                            header.len
+                        );
+                    }
+
+                    // .ts
+
+                    let ether = EthernetPacket::new(&packet).unwrap();
+                    handle_ethernet_packet(&ether, &tx);
                 }
-
-                // .ts
-
-                let ether = EthernetPacket::new(&packet).unwrap();
-                handle_ethernet_packet(&ether, &tx);
+                Err(_) => {
+                    // println!("Error! {:?}", e);
+                }
             }
-            Err(_) => {
-                // println!("Error! {:?}", e);
+
+            let stats = cap.stats().unwrap();
+            if i % 10000 == 0 {
+                println!(
+                    "Stats: Received: {}, Dropped: {}, if_dropped: {}",
+                    stats.received, stats.dropped, stats.if_dropped
+                );
+                bucket.stats(stats_all);
+                bucket.flush_to(&Stream::to_stdout().new_scope()).unwrap();
             }
         }
-
-        let stats = cap.stats().unwrap();
-        if i % 10000 == 0 {
-            println!(
-                "Stats: Received: {}, Dropped: {}, if_dropped: {}",
-                stats.received, stats.dropped, stats.if_dropped
-            );
-            bucket.stats(stats_all);
-            bucket.flush_to(&Stream::to_stdout().new_scope()).unwrap();
-        }
-    }
     }
 }
 
@@ -292,7 +296,8 @@ fn handle_tcp_packet(
         }
 
         // generate a key is uniquely id the 5 tuple
-        let key = match source < destination { // is_local(source)
+        let key = match source < destination {
+            // is_local(source)
             true => format!(
                 "tcp_{}:{}_{}:{}",
                 source,
@@ -387,40 +392,46 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
         match icmp_packet.get_icmp_type() {
             IcmpTypes::EchoReply => {
                 let echo_reply_packet = echo_reply::EchoReplyPacket::new(packet).unwrap();
-                println!(
-                    "[{}]: ICMP echo reply {} -> {} (seq={:?}, id={:?})",
-                    interface_name,
-                    source,
-                    destination,
-                    echo_reply_packet.get_sequence_number(),
-                    echo_reply_packet.get_identifier()
-                );
+                if DEBUG {
+                    println!(
+                        "[{}]: ICMP echo reply {} -> {} (seq={:?}, id={:?})",
+                        interface_name,
+                        source,
+                        destination,
+                        echo_reply_packet.get_sequence_number(),
+                        echo_reply_packet.get_identifier()
+                    );
+                }
 
                 handle_echo_reply(source, echo_reply_packet);
             }
             IcmpTypes::EchoRequest => {
                 let echo_request_packet = echo_request::EchoRequestPacket::new(packet).unwrap();
-                println!(
-                    "[{}]: ICMP echo request {} -> {} (seq={:?}, id={:?})",
-                    interface_name,
-                    source,
-                    destination,
-                    echo_request_packet.get_sequence_number(),
-                    echo_request_packet.get_identifier(),
-                    // echo_request_packet.payload(),
-                );
+                if DEBUG {
+                    println!(
+                        "[{}]: ICMP echo request {} -> {} (seq={:?}, id={:?})",
+                        interface_name,
+                        source,
+                        destination,
+                        echo_request_packet.get_sequence_number(),
+                        echo_request_packet.get_identifier(),
+                        // echo_request_packet.payload(),
+                    );
+                }
             }
             IcmpTypes::TimeExceeded => {
                 let time_exceeded_packet = time_exceeded::TimeExceededPacket::new(packet).unwrap();
-                println!(
-                    "[{}]: ICMP TimeExceeded {} -> {} (seq={:?}, payload={:?})\n{:?}",
-                    interface_name,
-                    source,
-                    destination,
-                    time_exceeded_packet,
-                    time_exceeded_packet.payload(),
-                    icmp_packet
-                );
+                if DEBUG {
+                    println!(
+                        "[{}]: ICMP TimeExceeded {} -> {} (seq={:?}, payload={:?})\n{:?}",
+                        interface_name,
+                        source,
+                        destination,
+                        time_exceeded_packet,
+                        time_exceeded_packet.payload(),
+                        icmp_packet
+                    );
+                }
 
                 handle_time_exceeded(source, time_exceeded_packet);
             }
@@ -441,13 +452,15 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
 fn handle_icmpv6_packet(interface_name: &str, source: IpAddr, destination: IpAddr, packet: &[u8]) {
     let icmpv6_packet = Icmpv6Packet::new(packet);
     if let Some(icmpv6_packet) = icmpv6_packet {
-        println!(
-            "[{}]: ICMPv6 packet {} -> {} (type={:?})",
-            interface_name,
-            source,
-            destination,
-            icmpv6_packet.get_icmpv6_type()
-        )
+        if DEBUG {
+            println!(
+                "[{}]: ICMPv6 packet {} -> {} (type={:?})",
+                interface_name,
+                source,
+                destination,
+                icmpv6_packet.get_icmpv6_type()
+            )
+        }
     } else {
         println!("[{}]: Malformed ICMPv6 Packet", interface_name);
     }

@@ -32,8 +32,7 @@ pub fn reverse_lookup(ip: String) -> String {
 }
 
 fn sys_lookup(ip: String) -> String {
-    let hostname = lookup_addr(&ip.parse::<IpAddr>().unwrap()).unwrap();
-    hostname
+    lookup_addr(&ip.parse::<IpAddr>().unwrap()).unwrap()
 }
 
 #[derive(FromBytes, AsBytes, Unaligned)]
@@ -257,7 +256,7 @@ impl<B: ByteSlice> DnsPacket<B> {
         }
 
         domain.pop();
-        domain.into()
+        domain
     }
 }
 
@@ -276,33 +275,30 @@ struct Buf<'a> {
 
 impl Buf<'_> {
     pub fn new(buf: &[u8]) -> Buf<'_> {
-        Buf {
-            buf: buf,
-            pointer: 0,
-        }
+        Buf { buf, pointer: 0 }
     }
 
     fn read_u8(&mut self) -> u8 {
         let val = self.buf[self.pointer];
         self.pointer += 1;
-        return val;
+        val
     }
 
     fn peek_u8(&mut self) -> u8 {
         let val = self.buf[self.pointer];
-        return val;
+        val
     }
 
     fn read_16(&mut self) -> u16 {
         let val = u16_val(self.buf[self.pointer], self.buf[self.pointer + 1]);
         self.pointer += 2;
-        return val;
+        val
     }
 
     fn read_bytes(&mut self, count: usize) -> &[u8] {
         let start = self.pointer;
         self.pointer = start + count;
-        return &self.buf[start..self.pointer];
+        &self.buf[start..self.pointer]
     }
 
     fn seek(&mut self, inc: usize) {

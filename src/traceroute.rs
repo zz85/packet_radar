@@ -4,7 +4,7 @@ use pnet::packet::icmp::echo_reply::EchoReplyPacket;
 use pnet::packet::icmp::echo_request::MutableEchoRequestPacket;
 use pnet::packet::icmp::time_exceeded::TimeExceededPacket;
 use pnet::packet::icmp::IcmpTypes;
-use pnet::packet::{MutablePacket, Packet};
+use pnet::packet::Packet;
 use pnet::transport::transport_channel;
 use pnet::transport::TransportChannelType::Layer4;
 use pnet::transport::TransportProtocol::Ipv4;
@@ -188,10 +188,10 @@ struct Probe {
 impl Probe {
     fn new(addr: IpAddr, ttl: u8) -> Probe {
         Probe {
-            addr: addr,
+            addr,
             ping_id: random::<u16>(),
             sequence_id: random::<u16>(),
-            ttl: ttl,
+            ttl,
             sent_time: Instant::now(),
         }
     }
@@ -225,7 +225,7 @@ struct TraceRouteInfo {
 impl TraceRouteInfo {
     fn new(data: Vec<ProbeResult>, destination: IpAddr) -> Self {
         Self {
-            data: data,
+            data,
             r#type: String::from("traceroute"),
             destination,
         }
@@ -295,7 +295,7 @@ impl IcmpProber {
     pub fn setup() -> Option<IcmpProber> {
         let protocol = Layer4(Ipv4(IpNextHeaderProtocols::Icmp));
 
-        let (mut tx, mut rx) = transport_channel(4096, protocol).unwrap();
+        let (tx, rx) = transport_channel(4096, protocol).unwrap();
         // let (mut tx, mut rx) = match transport_channel(4096, protocol) {
         //     Ok((tx, rx)) => (tx, rx),
         //     Err(e) => panic!(
