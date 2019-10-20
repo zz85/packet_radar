@@ -127,19 +127,6 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
     // if let Ok(encrypted) = parse_tls_encrypted(&packet) {
     //     let (_, msg) = encrypted;
     //     match (msg.hdr.record_type) {
-    //          ApplicationData => {
-    //             // println!("Application Data {:?}", app_data);
-    //             let mut tcp_stats = TCP_STATS.write().unwrap();
-    //             let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
-    //             if conn.time_to_application_data == Duration::new(0, 0) {
-    //                 println!("Application Data");
-    //                 conn.time_to_application_data = Instant::now().duration_since(conn.client_time);
-    //                 tcp_stats.count();
-    //             }
-    //         }
-    //         _ => {
-    //             println!("Something {:?}", msg);
-    //         }
     //     }
     // }
 
@@ -147,9 +134,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
     match r {
         Ok(v) => {
             // println!("TLS parsed {:?}", v);
-
             let (_, plain_text) = v;
-            // let record_header = raw_record.hdr;
             for m in plain_text.msg {
                 // println!("msg {:?}", m);
                 // Handshake(ClientKeyExchange)
@@ -167,13 +152,12 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
                         if let Some(v) = client_hello.ext {
                             if let Ok((_, ref extensions)) = parse_tls_extensions(v) {
                                 // println!("Client Hello Extensions {:?}", extensions);
-                                // TlsExtension::SNI
                                 // TlsExtension::EllipticCurves
                                 // TlsExtension::ALPN
                                 // TlsExtension::SignatureAlgorithms
                                 // TlsExtension::KeyShare
+                                // TlsExtension::PreSharedKey
 
-                                // TODO write this in a functional way?
                                 for ext in extensions {
                                     match ext {
                                         TlsExtension::SNI(sni) => {
@@ -213,15 +197,19 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
                         let mut highest = server_hello.version.0;
                         if let Some(v) = server_hello.ext {
                             if let Ok((_, ref extensions)) = parse_tls_extensions(v) {
-                                // TODO gather stats tls 1.3 usage
                                 // println!("Server Hello Extensions {:?}", extensions);
-                                // TlsExtension::PreSharedKey
-                                // TlsExtension::KeyShare
+                                // TlsExtension::KeyShare count
+                                // Hello Retry stats
+                                // CipherSuit, ALPN
+                                // OCSP, Key Exchange
 
                                 for ext in extensions {
                                     match ext {
                                         TlsExtension::SupportedVersions(sv) => {
                                             highest = highest_version(highest, sv);
+                                            if highest < TlsVersion::Tls13.0 {
+                                                println!("************** DOWNGRADE ************???");
+                                            }
                                         }
                                         _ => {}
                                     }
@@ -244,7 +232,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
                         tcp_stats.count();
                     }
                     TlsMessage::ChangeCipherSpec => {
-                        // println!("CCS {:?}", m);
+                        // For TLS 1.2, usually marks encrypted messages after.
                     }
                     TlsMessage::Handshake(msg) => {
                         // println!("Handshake msg {:?}", msg);
@@ -260,11 +248,10 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
                     let mut tcp_stats = TCP_STATS.write().unwrap();
                     let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
                     if conn.time_to_application_data == Duration::new(0, 0)
-                        && Instant::now().duration_since(conn.client_time)
-                            > Duration::from_millis(1)
+                        // TODO filter that we cannot fetch tcp stat, right now just a heuristic
+                        && Instant::now().duration_since(conn.client_time) > Duration::from_millis(1)
                     {
-                        // TODO filter that we cannot fetch tcp stat
-                        println!("Application Data");
+                        println!("First Application Data");
                         conn.time_to_application_data =
                             Instant::now().duration_since(conn.client_time);
                         tcp_stats.count();
