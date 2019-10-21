@@ -13,7 +13,7 @@ use libproc::libproc::proc_pid::PIDInfo;
 use libproc::libproc::proc_pid::ProcType;
 use libproc::libproc::proc_pid::{listpidinfo, pidinfo, ListThreads};
 
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /* TODO build a map so you can look up
 5 tuple (udp, sip, sp, dip, dp)  -> to processes
@@ -80,7 +80,7 @@ fn processes_and_sockets() {
                                             if socket.psi.soi_protocol == libc::IPPROTO_UDP {
                                                 let info = unsafe { socket.psi.soi_proto.pri_in };
                                                 // curr_udps.push(info);
-                                                println!("UDP");
+                                                // println!("UDP");
                                             } else {
                                                 println!("IN");
                                             }
@@ -90,6 +90,8 @@ fn processes_and_sockets() {
                                             // access to the member of `soi_proto` is unsafe becasuse of union type.
                                             let info = unsafe { socket.psi.soi_proto.pri_tcp };
                                             let in_socket_info = info.tcpsi_ini;
+
+
 
                                             // in_sockinfo
 
@@ -101,19 +103,77 @@ fn processes_and_sockets() {
                                             let local_addr = in_socket_info.insi_laddr;
                                             let foreign_addr = in_socket_info.insi_faddr;
 
-                                            // let local_in_port = from_endian(info.pri_in.insi_lport);
+                                            // unsafe {
+                                            //     match local_addr {
+                                            //         ina_6 => {
+                                            //             println!("IPV6");
+                                            //         }
+                                            //         ina_46 => {
+                                            //             println!("IPV4");
+                                            //         }
+
+                                            //     }
+                                            // }
+
+                                            let mut source_ip = IpAddr::from(Ipv4Addr::from(0));
+                                            let mut dest_ip = IpAddr::from(Ipv4Addr::from(0));
+
+                                            match in_socket_info.insi_vflag {
+                                                1 => {
+                                                    println!("IPV4");
+                                                    let s_addr = unsafe {
+                                                        local_addr.ina_46.i46a_addr4.s_addr
+                                                    };
+
+                                                    let f_addr = unsafe {
+                                                        foreign_addr.ina_46.i46a_addr4.s_addr
+                                                    };
+
+                                                    // source_ip = convert_ip(s_addr);
+                                                    source_ip = IpAddr::from(Ipv4Addr::from(u32::from_be(s_addr)));
+                                                    dest_ip = convert_ip(f_addr);
+                                                }
+                                                2 => {
+                                                    println!("IPV6");
+                                                    let s_addr = unsafe {
+                                                        local_addr.ina_6
+                                                    };
+
+                                                    let f_addr = unsafe {
+                                                        foreign_addr.ina_6
+                                                    };
+
+                                                    source_ip = IpAddr::V6(
+                                                        Ipv6Addr::new(
+                                                            s_addr.s6_addr[0].into(),
+                                                            s_addr.s6_addr[1].into(),
+                                                            s_addr.s6_addr[2].into(),
+                                                            s_addr.s6_addr[3].into(),
+                                                            s_addr.s6_addr[4].into(),
+                                                            s_addr.s6_addr[5].into(),
+                                                            s_addr.s6_addr[6].into(),
+                                                            s_addr.s6_addr[7].into(),
+                                                        )
+                                                    );
+
+                                                    dest_ip = IpAddr::V6(
+                                                        Ipv6Addr::new(
+                                                            f_addr.s6_addr[0].into(),
+                                                            f_addr.s6_addr[1].into(),
+                                                            f_addr.s6_addr[2].into(),
+                                                            f_addr.s6_addr[3].into(),
+                                                            f_addr.s6_addr[4].into(),
+                                                            f_addr.s6_addr[5].into(),
+                                                            f_addr.s6_addr[6].into(),
+                                                            f_addr.s6_addr[7].into(),
+                                                        )
+                                                    );
+                                                }
+                                                _  => {}
+                                            }
 
                                             // access to the member of `insi_laddr` (local addr) is unsafe becasuse of union type.
-                                            let s_addr = unsafe {
-                                                local_addr.ina_46.i46a_addr4.s_addr
-                                            };
 
-                                            let f_addr = unsafe {
-                                                foreign_addr.ina_46.i46a_addr4.s_addr
-                                            };
-
-                                            let source_ip = convert_ip(s_addr);
-                                            let dest_ip = convert_ip(f_addr);
 
                                             println!(
                                                 "pid: {} ip: {}:{} -> {}:{}",
@@ -144,6 +204,7 @@ pub fn ntohs(u: u16) -> u16 {
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(target_os = "macos")]
 pub fn change_endian(val: u32) -> u32 {
+    // u32::from_be(val)
     let mut ret = 0;
     ret |= val >> 24 & 0x000000ff;
     ret |= val >> 8 & 0x0000ff00;
