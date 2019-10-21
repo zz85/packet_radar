@@ -52,6 +52,7 @@ function connect_packet_server(handler) {
 
                 switch (type) {
                     case 'lookup_addr':
+                        request_once_handler('lookup' + data.ip, data.hostname);
                         ips.set(data.ip, data.hostname);
                         break;
                     case 'local_addr':
@@ -59,14 +60,10 @@ function connect_packet_server(handler) {
                         break;
                     case 'traceroute':
                         var cb_key = 'traceroute ' + data.destination;
-                        var cb = query_callbacks.get(cb_key);
-                        if (cb) {
-                            cb(data);
-                            query_callbacks.delete(cb_key);
-                        }
+                        notify_once(cb_key, data);
                         break;
                     case 'geoip':
-                        // notify('geoip', data);
+                        notify_once('geoip' + data.ip, data);
                         break;
                     default:
                         console.log(data);
@@ -100,7 +97,8 @@ function query(payload) {
     ws.send(JSON.stringify(payload));
 }
 
-function query_lookup(ip) {
+function query_lookup(ip, cb) {
+    request_once_handler('lookup' + ip, cb);
     query({req: 'lookup', value: ip, type: ''});
 }
 
@@ -108,7 +106,8 @@ function query_host_ip() {
     query({req: 'local_addr', value: '', type: ''});
 }
 
-function query_geo_ip(ip) {
+function query_geo_ip(ip, cb) {
+    request_once_handler('geoip' + ip, cb);
     query({req: 'geoip', value: ip, type: ''});
 }
 
@@ -133,12 +132,25 @@ function notify(topic, data) {
     }
 }
 
-function query_traceroute(ip, cb) {
+/* single use req system, notify and unsub */
+function notify_once(cb_key, data) {
+    var cb = query_callbacks.get(cb_key);
     if (cb) {
-        query_callbacks.set('traceroute ' + ip, cb);
+        cb(data);
+        query_callbacks.delete(cb_key);
+    }
+}
+
+function request_once_handler(key, cb) {
+    if (cb) {
+        query_callbacks.set(key, cb);
 
         // TODO add timeout cleanup
     }
+}
+
+function query_traceroute(ip, cb) {
+    request_once_handler('traceroute ' + ip, cb);
     query({req: 'traceroute', value: ip, type: ''})
 
 }

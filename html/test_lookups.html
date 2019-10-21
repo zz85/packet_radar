@@ -1,0 +1,66 @@
+<html>
+<body>
+    <style>
+        body {
+            font-family: monospace;
+        }
+        #holder {
+            width: 100%;
+            height: 100%;
+        }
+
+        .item {
+            width: 100%;
+            height: 20px;
+        }
+    </style>
+
+    <script src="js/packet_server.js"></script>
+    <script src="js/stats.js"></script>
+    <script src="js/links.js"></script>
+
+    <h2>Geo IP lookup</h2>
+    <input type="text" placeholder="ip" id="geoip_input"></input><button onclick="query_geo_ip(geoip_input.value, callback)">geoip lookup</button>
+    <br/>
+    <button onclick="query_host_ip()">query local ip</button>
+    <br/>
+    <input type="text" placeholder="ip" id="reverseip_input"></input><button onclick="query_lookup(reverseip_input.value, callback)">reverse ip lookup</button>
+
+
+
+    <pre id="holder"></pre>
+
+    <script>
+        connect_packet_server(data => {
+            // console.log(data);
+           const { src, dest, len, src_port, dest_port } = data;
+        });
+
+        // subscribe('geoip', (data) => {
+        //     console.log('receive geoip', data);
+        //     holder.innerHTML = 'Geo ip\n'
+        //     holder.innerHTML += JSON.stringify(data, null, '\t')
+        // });
+
+        subscribe('lookup_addr', (data) => {
+            holder.innerHTML = 'Reverse lookup address\n'
+            holder.innerHTML += JSON.stringify(data, null, '\t')
+        });
+
+        // subscribe('local_addr', (data) => {
+        //     holder.innerHTML = 'Local address\n'
+        //     console.log('receive local_addr', data);
+        //     holder.innerHTML += JSON.stringify(data, null, '\t')
+        // });
+
+        function callback(data) {
+            holder.innerHTML = 'Callback\n'
+            holder.innerHTML += JSON.stringify(data, null, '\t')
+        }
+
+
+
+
+    </script>
+</body>
+</html>
