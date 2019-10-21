@@ -11,7 +11,7 @@
 
         .item {
             width: 100%;
-            height: 20px;   
+            height: 20px;
         }
     </style>
 
@@ -20,9 +20,16 @@
     <script src="js/links.js"></script>
 
     <h2>Geo IP lookup</h2>
-    <input type="text" placeholder="ip" id="geoip_input"></input><button onclick="query_geo_ip(geoip_input.value)">lookup</button>
+    <input type="text" placeholder="ip" id="geoip_input"></input><button onclick="query_geo_ip(geoip_input.value)">geoip lookup</button>
+    <br/>
+    <button onclick="query_host_ip()">query local ip</button>
+    <br/>
+    <input type="text" placeholder="ip" id="reverseip_input"></input><button onclick="query_lookup(reverseip_input.value)">reverse ip lookup</button>
+
+
+
     <pre id="holder"></pre>
-    
+
     <script>
         connect_packet_server(data => {
             // console.log(data);
@@ -31,8 +38,22 @@
 
         subscribe('geoip', (data) => {
             console.log('receive geoip', data);
-            holder.innerHTML = JSON.stringify(data, null, '\t')
+            holder.innerHTML = 'Geo ip\n'
+            holder.innerHTML += JSON.stringify(data, null, '\t')
         });
+
+        subscribe('local_addr', (data) => {
+            holder.innerHTML = 'Local address\n'
+            console.log('receive local_addr', data);
+            holder.innerHTML += JSON.stringify(data, null, '\t')
+        });
+
+        subscribe('lookup_addr', (data) => {
+            holder.innerHTML = 'Reverse lookup address\n'
+            holder.innerHTML += JSON.stringify(data, null, '\t')
+        });
+
+
 
     </script>
 </body>

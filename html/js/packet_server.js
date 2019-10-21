@@ -48,6 +48,8 @@ function connect_packet_server(handler) {
 
             var type = data.type;
             if (type) {
+                notify(type, data);
+
                 switch (type) {
                     case 'lookup_addr':
                         ips.set(data.ip, data.hostname);
@@ -64,10 +66,7 @@ function connect_packet_server(handler) {
                         }
                         break;
                     case 'geoip':
-                        var subs = topic_subscribers.get('geoip');
-                        if (subs) {
-                            subs.forEach(s => s(data));
-                        }
+                        // notify('geoip', data);
                         break;
                     default:
                         console.log(data);
@@ -113,12 +112,25 @@ function query_geo_ip(ip) {
     query({req: 'geoip', value: ip, type: ''});
 }
 
+/* pub sub system */
 function subscribe(topic, handler) {
     if (!topic_subscribers.has(topic)) {
         topic_subscribers.set(topic, []);
     }
 
     topic_subscribers.get(topic).push(handler);
+}
+
+function unsubscribe(topic, handler) {
+    var subscribers = topic_subscribers.get(topic);
+    subscribers.splice(subscribers.indexOf(handler), 1);
+}
+
+function notify(topic, data) {
+    var subs = topic_subscribers.get(topic);
+    if (subs) {
+        subs.forEach(s => s(data));
+    }
 }
 
 function query_traceroute(ip, cb) {
@@ -128,7 +140,7 @@ function query_traceroute(ip, cb) {
         // TODO add timeout cleanup
     }
     query({req: 'traceroute', value: ip, type: ''})
-    
+
 }
 
 function check_host(ip) {
