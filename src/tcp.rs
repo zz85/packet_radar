@@ -208,7 +208,9 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
                                         TlsExtension::SupportedVersions(sv) => {
                                             highest = highest_version(highest, sv);
                                             if highest < TlsVersion::Tls13.0 {
-                                                println!("************** DOWNGRADE ************???");
+                                                println!(
+                                                    "************** DOWNGRADE ************???"
+                                                );
                                             }
                                         }
                                         _ => {}

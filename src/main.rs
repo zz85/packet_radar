@@ -49,8 +49,8 @@ fn main() {
     let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
 
     // Test experimentation
-    // netstats();
-    test_lookups();
+    netstats();
+    // test_lookups();
 
     println!(
         "Websocket server listening on {}. Open html/packet_viz.html",
