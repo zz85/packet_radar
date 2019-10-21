@@ -2,6 +2,9 @@ use netstat::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocke
 
 use sysinfo::{NetworkExt, Pid, ProcessExt, ProcessorExt, Signal, System, SystemExt};
 
+use libc;
+use libc::{c_int, c_void, size_t};
+
 use libproc::libproc::bsd_info::BSDInfo;
 use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
 use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind};
@@ -9,6 +12,8 @@ use libproc::libproc::proc_pid;
 use libproc::libproc::proc_pid::PIDInfo;
 use libproc::libproc::proc_pid::ProcType;
 use libproc::libproc::proc_pid::{listpidinfo, pidinfo, ListThreads};
+
+use std::net::{IpAddr, Ipv4Addr};
 
 /* TODO build a map so you can look up
 5 tuple (udp, sip, sp, dip, dp)  -> to processes
@@ -18,7 +23,11 @@ a) /proc/net/
 b) lsof
 c) netstat
 
-also see https://github.com/dalance/procs - https://github.com/dalance/procs/pull/9/files
+also see https://github.com/dalance/procs - https://github.com/dalance/procs/pull/9/files - https://github.com/dalance/procs/commit/e99a21b55121b3b99a6edc64a94ade1334bb7dee https://github.com/dalance/procs/blob/cfecc8ed37e5d34fc4f59401cd87f14b243250c7/src/process/macos.rs
+https://opensource.apple.com/source/lsof/lsof-49/lsof/dialects/darwin/libproc/dsock.c
+https://github.com/sveinbjornt/Sloth
+https://opensource.apple.com/source/xnu/xnu-1504.15.3/bsd/sys/proc_info.h.auto.html
+
 psutil/rsof
 libutils2
 https://crates.io/crates/procfs
@@ -33,50 +42,86 @@ pub fn netstats() {
     println!("used swap   : {} kB", sys.get_used_swap());
 
     // netstat_mod(sys);
-    if let Ok(res) = proc_pid::listpids(ProcType::ProcAllPIDS) {
-        println!("{:?}", res);
-        for pid in res {
-            // if let Ok(r) = proc_pid::pidinfo::<SocketFDInfo>(pid as i32, 0) {
-            // if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, 0) {
+    processes_and_sockets();
+}
 
+fn processes_and_sockets() {
+    if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
+        // pids
+        //     .iter()
+        //     .map(|pid| pidinfo::<BSDInfo>(pid as i32, 0))
+        //     .map(|info| listpidinfo::<ListFDs>(pid as i32, info.pbi_nfiles as usize))
+        //     .map(|ref fds| fds.iter())
+        //     .map(|fd| {
+        //         match fd.proc_fdtype.into() {
+        //             ProcFDType::Socket => {
+        //                 if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
+        //                 }
+        //             }
+        //         }
+        //     });
+
+        for pid in pids {
             if let Ok(info) = pidinfo::<BSDInfo>(pid as i32, 0) {
                 if let Ok(fds) = listpidinfo::<ListFDs>(pid as i32, info.pbi_nfiles as usize) {
+                    println!("{:?} {}",  pid, fds.len());
                     for fd in &fds {
                         match fd.proc_fdtype.into() {
                             ProcFDType::Socket => {
                                 if let Ok(socket) =
                                     pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd)
                                 {
+                                    // SOI = socket info
                                     match socket.psi.soi_kind.into() {
+                                        SocketInfoKind::Generic  => {
+                                            println!("Generic");
+                                        }
+                                        SocketInfoKind::In => {
+                                            if socket.psi.soi_protocol == libc::IPPROTO_UDP {
+                                                let info = unsafe { socket.psi.soi_proto.pri_in };
+                                                // curr_udps.push(info);
+                                                println!("UDP");
+                                            } else {
+                                                println!("IN");
+                                            }
+                                        }
+                                        // There's also UDS
                                         SocketInfoKind::Tcp => {
                                             // access to the member of `soi_proto` is unsafe becasuse of union type.
                                             let info = unsafe { socket.psi.soi_proto.pri_tcp };
+                                            let in_socket_info = info.tcpsi_ini;
 
-                                            // change endian and cut off because insi_lport is network endian and 16bit witdh.
-                                            let mut port = 0;
-                                            port |= info.tcpsi_ini.insi_lport >> 8 & 0x00ff;
-                                            port |= info.tcpsi_ini.insi_lport << 8 & 0xff00;
+                                            // in_sockinfo
 
-                                            // access to the member of `insi_laddr` is unsafe becasuse of union type.
+                                            /* ports */
+                                            let local_port = from_endian(in_socket_info.insi_lport);
+                                            let dest_port = from_endian(in_socket_info.insi_fport);
+
+                                            /* addr */
+                                            let local_addr = in_socket_info.insi_laddr;
+                                            let foreign_addr = in_socket_info.insi_faddr;
+
+                                            // let local_in_port = from_endian(info.pri_in.insi_lport);
+
+                                            // access to the member of `insi_laddr` (local addr) is unsafe becasuse of union type.
                                             let s_addr = unsafe {
-                                                info.tcpsi_ini.insi_laddr.ina_46.i46a_addr4.s_addr
+                                                local_addr.ina_46.i46a_addr4.s_addr
                                             };
 
-                                            // change endian because insi_laddr is network endian.
-                                            let mut addr = 0;
-                                            addr |= s_addr >> 24 & 0x000000ff;
-                                            addr |= s_addr >> 8 & 0x0000ff00;
-                                            addr |= s_addr << 8 & 0x00ff0000;
-                                            addr |= s_addr << 24 & 0xff000000;
+                                            let f_addr = unsafe {
+                                                foreign_addr.ina_46.i46a_addr4.s_addr
+                                            };
+
+                                            let source_ip = convert_ip(s_addr);
+                                            let dest_ip = convert_ip(f_addr);
 
                                             println!(
-                                                "pid: {} ip: {}.{}.{}.{}:{}",
+                                                "pid: {} ip: {}:{} -> {}:{}",
                                                 pid,
-                                                addr >> 24 & 0xff,
-                                                addr >> 16 & 0xff,
-                                                addr >> 8 & 0xff,
-                                                addr & 0xff,
-                                                port
+                                                source_ip,
+                                                local_port,
+                                                dest_ip,
+                                                dest_port,
                                             );
                                         }
                                         _ => (),
@@ -90,6 +135,40 @@ pub fn netstats() {
             }
         }
     }
+}
+
+pub fn ntohs(u: u16) -> u16 {
+    u16::from_be(u)
+}
+
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(target_os = "macos")]
+pub fn change_endian(val: u32) -> u32 {
+    let mut ret = 0;
+    ret |= val >> 24 & 0x000000ff;
+    ret |= val >> 8 & 0x0000ff00;
+    ret |= val << 8 & 0x00ff0000;
+    ret |= val << 24 & 0xff000000;
+    ret
+}
+
+pub fn from_endian(val: i32) -> i32 {
+    // let mut port = 0;
+    // port |= val >> 8 & 0x00ff;
+    // port |= val << 8 & 0xff00;
+    // port
+    ntohs(val as u16) as i32
+}
+
+fn convert_ip(addr: u32) -> IpAddr {
+    let addr = change_endian(addr);
+
+    IpAddr::V4(Ipv4Addr::new(
+        (addr >> 24 & 0xff) as u8,
+        (addr >> 16 & 0xff) as u8,
+        (addr >> 8 & 0xff) as u8,
+        (addr & 0xff) as u8,
+    ))
 }
 
 fn netstat_mod(sys: &mut System) {
