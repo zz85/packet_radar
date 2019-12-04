@@ -7,7 +7,7 @@ use libc::{c_int, c_void, size_t};
 
 use libproc::libproc::bsd_info::BSDInfo;
 use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
-use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind, InSockInfo};
+use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind, InSockInfo, SocketInfo, TcpSIState};
 use libproc::libproc::proc_pid;
 use libproc::libproc::proc_pid::PIDInfo;
 use libproc::libproc::proc_pid::ProcType;
@@ -18,6 +18,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use num_traits::{FromPrimitive, ToPrimitive};
 use enum_primitive_derive::Primitive;
 
+#[derive(Debug, Primitive)]
 enum IpType {
     Ipv4 = 0x1,
     Ipv6 = 0x2,
@@ -34,12 +35,26 @@ enum SocketState { /* aka soi_state */
     ReceiveAtMark = 0x0040,
     Priviledge =  0x0080,
     NonBlockingIO = 0x0100,
-    AsynIO = 0x0200,
+    AsyncIO = 0x0200,
     Incomplete = 0x0800,
     Complete = 0x1000,
     IsDisconnected = 0x2000,
     Draining = 0x4000,
 }
+
+// tcp_sockinfo 
+// #define TSI_S_CLOSED		0	/* closed */
+// #define TSI_S_LISTEN		1	/* listening for connection */
+// #define TSI_S_SYN_SENT		2	/* active, have sent syn */
+// #define TSI_S_SYN_RECEIVED	3	/* have send and received syn */
+// #define TSI_S_ESTABLISHED	4	/* established */
+// #define TSI_S__CLOSE_WAIT	5	/* rcvd fin, waiting for close */
+// #define TSI_S_FIN_WAIT_1	6	/* have closed, sent fin */
+// #define TSI_S_CLOSING		7	/* closed xchd FIN; await FIN ACK */
+// #define TSI_S_LAST_ACK		8	/* had fin and close; await FIN ACK */
+// #define TSI_S_FIN_WAIT_2	9	/* have closed, fin is acked */
+// #define TSI_S_TIME_WAIT		10	/* in 2*msl quiet wait after close */
+// #define TSI_S_RESERVED		11	/* pseudo state: reserved */
 
 /* TODO build a map so you can look up
 5 tuple (udp, sip, sp, dip, dp)  -> to processes
@@ -60,6 +75,13 @@ psutil/rsof
 libutils2
 https://crates.io/crates/procfs
 https://github.com/andrewdavidmackenzie/libproc-rs
+
+MacOS
+sudo lsof -iTCP -sTCP:LISTEN -P -n
+sudo lsof -iUDP -P -n
+sudo lsof -i
+netstat -anl
+
 
 */
 pub fn netstats() {
@@ -100,17 +122,7 @@ fn processes_and_sockets() {
                                     pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd)
                                 {
                                     let socket_info = socket.psi;
-
-                                    print!("Socket state: ");
-                                    for i in 0..14 {
-                                        let j = 1 << i;
-                                        if socket_info.soi_state & j > 0 {
-                                            let socket_state = SocketState::from_i16(j).unwrap();
-                                            print!("{:?}, ", socket_state);
-                                        }
-                                    }
-                                    println!("");
-
+                                    // debug_socket_info(socket_info);
 
                                     // SOI = socket info
                                     match socket_info.soi_kind.into() {
@@ -123,19 +135,27 @@ fn processes_and_sockets() {
                                                 // curr_udps.push(info);
                                                 // println!("UDP");
                                                 get_socket_info(pid, info, "udp");
+                                                
                                             } else {
                                                 println!("IN");
                                             }
                                         }
-                                        // There's also UDS
                                         SocketInfoKind::Tcp => {
                                             // access to the member of `soi_proto` is unsafe becasuse of union type.
                                             let info = unsafe { socket_info.soi_proto.pri_tcp };
                                             let in_socket_info = info.tcpsi_ini;
                                             get_socket_info(pid, in_socket_info, "tcp");
+                                            println!("State: {:?}", TcpSIState::from(info.tcpsi_state));
+                                            // debug_socket_info(socket_info);
+                                        }
+                                        // There's also UDS
+                                        SocketInfoKind::Un => {
 
                                         }
-                                        _ => (),
+                                        _ => {
+                                            // KernEvent, KernCtl
+                                            // println!("Something else? {:?}", x);
+                                        }
                                     }
                                 }
                             }
@@ -146,6 +166,18 @@ fn processes_and_sockets() {
             }
         }
     }
+}
+
+fn debug_socket_info(socket_info: SocketInfo) {
+    print!("Socket state: ");
+    for i in 0..14 {
+        let j = 1 << i;
+        if socket_info.soi_state & j > 0 {
+            let socket_state = SocketState::from_i16(j).unwrap();
+            print!("{:?}, ", socket_state);
+        }
+    }
+    println!("");
 }
 
 fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
@@ -159,10 +191,9 @@ fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
 
     let mut source_ip = IpAddr::from(Ipv4Addr::from(0));
     let mut dest_ip = IpAddr::from(Ipv4Addr::from(0));
-
-    match in_socket_info.insi_vflag {
-        // IpType::Ipv4
-        1 => {
+    
+    match IpType::from_u8(in_socket_info.insi_vflag) {
+        Some(IpType::Ipv4) => {
             // println!("IPV4");
             let s_addr = unsafe {
                 local_addr.ina_46.i46a_addr4.s_addr
@@ -175,8 +206,7 @@ fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
             source_ip = convert_to_ipv4(s_addr);
             dest_ip = convert_to_ipv4(f_addr);
         }
-        // IpType::Ipv6
-        2=> {
+        Some(IpType::Ipv6) => {
             // println!("IPV6");
             let s_addr = unsafe {
                 local_addr.ina_6
