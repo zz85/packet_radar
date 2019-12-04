@@ -7,7 +7,7 @@ use libc::{c_int, c_void, size_t};
 
 use libproc::libproc::bsd_info::BSDInfo;
 use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
-use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind};
+use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind, InSockInfo};
 use libproc::libproc::proc_pid;
 use libproc::libproc::proc_pid::PIDInfo;
 use libproc::libproc::proc_pid::ProcType;
@@ -15,18 +15,46 @@ use libproc::libproc::proc_pid::{listpidinfo, pidinfo, ListThreads};
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use num_traits::{FromPrimitive, ToPrimitive};
+use enum_primitive_derive::Primitive;
+
+enum IpType {
+    Ipv4 = 0x1,
+    Ipv6 = 0x2,
+}
+
+#[derive(Debug, Primitive)]
+enum SocketState { /* aka soi_state */
+    NoFileTableRef = 0x0001,
+    IsConnected = 0x0002,
+    IsConnecting = 0x0004,
+    IsDisconnecting = 0x0008,
+    CantSendMore = 0x0010,
+    CantReceiveMore = 0x0020,
+    ReceiveAtMark = 0x0040,
+    Priviledge =  0x0080,
+    NonBlockingIO = 0x0100,
+    AsynIO = 0x0200,
+    Incomplete = 0x0800,
+    Complete = 0x1000,
+    IsDisconnected = 0x2000,
+    Draining = 0x4000,
+}
+
 /* TODO build a map so you can look up
 5 tuple (udp, sip, sp, dip, dp)  -> to processes
 
 on new connection, look up
-a) /proc/net/
-b) lsof
-c) netstat
+a) /proc/net/ (linux)
+b) lsof (mac)
+c) netstat?
 
 also see https://github.com/dalance/procs - https://github.com/dalance/procs/pull/9/files - https://github.com/dalance/procs/commit/e99a21b55121b3b99a6edc64a94ade1334bb7dee https://github.com/dalance/procs/blob/cfecc8ed37e5d34fc4f59401cd87f14b243250c7/src/process/macos.rs
 https://opensource.apple.com/source/lsof/lsof-49/lsof/dialects/darwin/libproc/dsock.c
 https://github.com/sveinbjornt/Sloth
 https://opensource.apple.com/source/xnu/xnu-1504.15.3/bsd/sys/proc_info.h.auto.html
+
+
 
 psutil/rsof
 libutils2
@@ -71,16 +99,30 @@ fn processes_and_sockets() {
                                 if let Ok(socket) =
                                     pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd)
                                 {
+                                    let socket_info = socket.psi;
+
+                                    print!("Socket state: ");
+                                    for i in 0..14 {
+                                        let j = 1 << i;
+                                        if socket_info.soi_state & j > 0 {
+                                            let socket_state = SocketState::from_i16(j).unwrap();
+                                            print!("{:?}, ", socket_state);
+                                        }
+                                    }
+                                    println!("");
+
+
                                     // SOI = socket info
-                                    match socket.psi.soi_kind.into() {
+                                    match socket_info.soi_kind.into() {
                                         SocketInfoKind::Generic  => {
                                             println!("Generic");
                                         }
                                         SocketInfoKind::In => {
-                                            if socket.psi.soi_protocol == libc::IPPROTO_UDP {
-                                                let info = unsafe { socket.psi.soi_proto.pri_in };
+                                            if socket_info.soi_protocol == libc::IPPROTO_UDP {
+                                                let info = unsafe { socket_info.soi_proto.pri_in };
                                                 // curr_udps.push(info);
                                                 // println!("UDP");
+                                                get_socket_info(pid, info, "udp");
                                             } else {
                                                 println!("IN");
                                             }
@@ -88,60 +130,10 @@ fn processes_and_sockets() {
                                         // There's also UDS
                                         SocketInfoKind::Tcp => {
                                             // access to the member of `soi_proto` is unsafe becasuse of union type.
-                                            let info = unsafe { socket.psi.soi_proto.pri_tcp };
+                                            let info = unsafe { socket_info.soi_proto.pri_tcp };
                                             let in_socket_info = info.tcpsi_ini;
+                                            get_socket_info(pid, in_socket_info, "tcp");
 
-                                            /* ports */
-                                            let local_port = ntohs(in_socket_info.insi_lport);
-                                            let dest_port = ntohs(in_socket_info.insi_fport);
-
-                                            /* addr */
-                                            let local_addr = in_socket_info.insi_laddr;
-                                            let foreign_addr = in_socket_info.insi_faddr;
-
-                                            let mut source_ip = IpAddr::from(Ipv4Addr::from(0));
-                                            let mut dest_ip = IpAddr::from(Ipv4Addr::from(0));
-
-                                            match in_socket_info.insi_vflag {
-                                                1 => {
-                                                    // println!("IPV4");
-                                                    let s_addr = unsafe {
-                                                        local_addr.ina_46.i46a_addr4.s_addr
-                                                    };
-
-                                                    let f_addr = unsafe {
-                                                        foreign_addr.ina_46.i46a_addr4.s_addr
-                                                    };
-
-                                                    source_ip = convert_to_ipv4(s_addr);
-                                                    dest_ip = convert_to_ipv4(f_addr);
-                                                }
-                                                2 => {
-                                                    // println!("IPV6");
-                                                    let s_addr = unsafe {
-                                                        local_addr.ina_6
-                                                    };
-
-                                                    let f_addr = unsafe {
-                                                        foreign_addr.ina_6
-                                                    };
-
-                                                    source_ip = convert_to_ipv6(s_addr.s6_addr);
-                                                    dest_ip = convert_to_ipv6(f_addr.s6_addr);
-                                                }
-                                                _  => {}
-                                            }
-
-                                            // TODO add connection status
-
-                                            println!(
-                                                "pid: {} ip: {}:{} -> {}:{}",
-                                                pid,
-                                                source_ip,
-                                                local_port,
-                                                dest_ip,
-                                                dest_port,
-                                            );
                                         }
                                         _ => (),
                                     }
@@ -156,7 +148,64 @@ fn processes_and_sockets() {
     }
 }
 
-pub fn ntohs(u: i32) -> u16 {
+fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
+    /* ports */
+    let local_port = ntohs(in_socket_info.insi_lport);
+    let dest_port = ntohs(in_socket_info.insi_fport);
+
+    /* addr */
+    let local_addr = in_socket_info.insi_laddr;
+    let foreign_addr = in_socket_info.insi_faddr;
+
+    let mut source_ip = IpAddr::from(Ipv4Addr::from(0));
+    let mut dest_ip = IpAddr::from(Ipv4Addr::from(0));
+
+    match in_socket_info.insi_vflag {
+        // IpType::Ipv4
+        1 => {
+            // println!("IPV4");
+            let s_addr = unsafe {
+                local_addr.ina_46.i46a_addr4.s_addr
+            };
+
+            let f_addr = unsafe {
+                foreign_addr.ina_46.i46a_addr4.s_addr
+            };
+
+            source_ip = convert_to_ipv4(s_addr);
+            dest_ip = convert_to_ipv4(f_addr);
+        }
+        // IpType::Ipv6
+        2=> {
+            // println!("IPV6");
+            let s_addr = unsafe {
+                local_addr.ina_6
+            };
+
+            let f_addr = unsafe {
+                foreign_addr.ina_6
+            };
+
+            source_ip = convert_to_ipv6(s_addr.s6_addr);
+            dest_ip = convert_to_ipv6(f_addr.s6_addr);
+        }
+        _  => {}
+    }
+
+    // TODO add connection status
+
+    println!(
+        "pid: {} [{}] ip: {}:{} -> {}:{}",
+        pid,
+        proto,
+        source_ip,
+        local_port,
+        dest_ip,
+        dest_port,
+    );
+}
+
+fn ntohs(u: i32) -> u16 {
     u16::from_be(u as u16)
 }
 

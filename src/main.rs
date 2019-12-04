@@ -11,6 +11,8 @@ use std::thread;
 
 #[macro_use]
 extern crate lazy_static;
+extern crate enum_primitive_derive;
+extern crate num_traits;
 
 mod dns;
 use dns::{parse_dns, reverse_lookup};
