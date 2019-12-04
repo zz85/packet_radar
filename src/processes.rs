@@ -18,6 +18,22 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use num_traits::{FromPrimitive, ToPrimitive};
 use enum_primitive_derive::Primitive;
 
+pub fn netstats() {
+    /* uses sys crate */
+    let mut sys = System::new();
+
+    println!("total memory: {} kB", sys.get_total_memory());
+    println!("used memory : {} kB", sys.get_used_memory());
+    println!("total swap  : {} kB", sys.get_total_swap());
+    println!("used swap   : {} kB", sys.get_used_swap());
+
+    /* unfortunately sys crate is a little buggy reading tcp6 sockets */
+    // netstat_mod(sys);
+
+    /* use lower level libproc for mac sockets */
+    processes_and_sockets();
+}
+
 #[derive(Debug, Primitive)]
 enum IpType {
     Ipv4 = 0x1,
@@ -42,19 +58,36 @@ enum SocketState { /* aka soi_state */
     Draining = 0x4000,
 }
 
-// tcp_sockinfo 
-// #define TSI_S_CLOSED		0	/* closed */
-// #define TSI_S_LISTEN		1	/* listening for connection */
-// #define TSI_S_SYN_SENT		2	/* active, have sent syn */
-// #define TSI_S_SYN_RECEIVED	3	/* have send and received syn */
-// #define TSI_S_ESTABLISHED	4	/* established */
-// #define TSI_S__CLOSE_WAIT	5	/* rcvd fin, waiting for close */
-// #define TSI_S_FIN_WAIT_1	6	/* have closed, sent fin */
-// #define TSI_S_CLOSING		7	/* closed xchd FIN; await FIN ACK */
-// #define TSI_S_LAST_ACK		8	/* had fin and close; await FIN ACK */
-// #define TSI_S_FIN_WAIT_2	9	/* have closed, fin is acked */
-// #define TSI_S_TIME_WAIT		10	/* in 2*msl quiet wait after close */
-// #define TSI_S_RESERVED		11	/* pseudo state: reserved */
+fn tcp_state_desc(state: TcpSIState) -> &'static str {
+    match state {
+        // Closed
+        TcpSIState::Closed => "CLOSED",
+        // Listening for connection
+        TcpSIState::Listen => "LISTEN",
+        // Active, have sent syn
+        TcpSIState::SynSent => "SYN_SENT",
+        // Have send and received syn
+        TcpSIState::SynReceived => "SYN_RECEIVED",
+        // Established
+        TcpSIState::Established => "ESTABLISHED",
+        // Rcvd fin, waiting for close
+        TcpSIState::CloseWait => "CLOSE_WAIT",
+        // Have closed, sent fin
+        TcpSIState::FinWait1 => "IN_WAIT_1",
+        // Closed xchd FIN; await FIN ACK
+        TcpSIState::Closing => "CLOSING",
+        // Had fin and close; await FIN ACK
+        TcpSIState::LastAck => "LAST_ACK",
+        // Have closed, fin is acked
+        TcpSIState::FinWait2 => "FIN_WAIT_2",
+        // In 2*msl quiet wait after close
+        TcpSIState::TimeWait => "TIME_WAIT",
+        // Pseudo state: reserved
+        TcpSIState::Reserved => "RESERVED",
+        // Unknown
+        TcpSIState::Unknown => "UNKNOWN",
+    }
+}
 
 /* TODO build a map so you can look up
 5 tuple (udp, sip, sp, dip, dp)  -> to processes
@@ -69,8 +102,6 @@ https://opensource.apple.com/source/lsof/lsof-49/lsof/dialects/darwin/libproc/ds
 https://github.com/sveinbjornt/Sloth
 https://opensource.apple.com/source/xnu/xnu-1504.15.3/bsd/sys/proc_info.h.auto.html
 
-
-
 psutil/rsof
 libutils2
 https://crates.io/crates/procfs
@@ -81,19 +112,14 @@ sudo lsof -iTCP -sTCP:LISTEN -P -n
 sudo lsof -iUDP -P -n
 sudo lsof -i
 netstat -anl
-
-
 */
-pub fn netstats() {
-    let mut sys = System::new();
-    println!("total memory: {} kB", sys.get_total_memory());
-    println!("used memory : {} kB", sys.get_used_memory());
-    println!("total swap  : {} kB", sys.get_total_swap());
-    println!("used swap   : {} kB", sys.get_used_swap());
 
-    // netstat_mod(sys);
-    processes_and_sockets();
+
+fn get_pid_path(pid: u32) -> Result<String, String> {
+    proc_pid::pidpath(pid as i32)
 }
+
+/* proc pid: proc_listpids, proc_name, proc_pidinfo, proc_regionfilename, proc_pidpath */
 
 fn processes_and_sockets() {
     if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
@@ -135,17 +161,17 @@ fn processes_and_sockets() {
                                                 // curr_udps.push(info);
                                                 // println!("UDP");
                                                 get_socket_info(pid, info, "udp");
-                                                
+
                                             } else {
-                                                println!("IN");
+                                                println!("Other sockets");
                                             }
                                         }
                                         SocketInfoKind::Tcp => {
                                             // access to the member of `soi_proto` is unsafe becasuse of union type.
                                             let info = unsafe { socket_info.soi_proto.pri_tcp };
                                             let in_socket_info = info.tcpsi_ini;
+                                            print!("({}) ", tcp_state_desc(TcpSIState::from(info.tcpsi_state)));
                                             get_socket_info(pid, in_socket_info, "tcp");
-                                            println!("State: {:?}", TcpSIState::from(info.tcpsi_state));
                                             // debug_socket_info(socket_info);
                                         }
                                         // There's also UDS
@@ -191,7 +217,8 @@ fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
 
     let mut source_ip = IpAddr::from(Ipv4Addr::from(0));
     let mut dest_ip = IpAddr::from(Ipv4Addr::from(0));
-    
+
+    let mut ip_type = 4;
     match IpType::from_u8(in_socket_info.insi_vflag) {
         Some(IpType::Ipv4) => {
             // println!("IPV4");
@@ -218,21 +245,40 @@ fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
 
             source_ip = convert_to_ipv6(s_addr.s6_addr);
             dest_ip = convert_to_ipv6(f_addr.s6_addr);
+
+            ip_type = 6;
         }
         _  => {}
     }
 
     // TODO add connection status
 
-    println!(
-        "pid: {} [{}] ip: {}:{} -> {}:{}",
-        pid,
-        proto,
-        source_ip,
-        local_port,
-        dest_ip,
-        dest_port,
-    );
+    let name = format!("{:?}", proc_pid::name(pid as i32));
+
+    if dest_port > 0 {
+        println!(
+                "pid: {} [{}{}] [{}]:{} -> [{}]:{} {}",
+                pid,
+                proto,
+                ip_type,
+                source_ip,
+                local_port,
+                dest_ip,
+                dest_port,
+                name,
+            );
+    }
+    else {
+        println!(
+                "pid: {} [{}{}] [{}]:{} {}",
+                pid,
+                proto,
+                ip_type,
+                source_ip,
+                local_port,
+                name,
+            );
+    }
 }
 
 fn ntohs(u: i32) -> u16 {
