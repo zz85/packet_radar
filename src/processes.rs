@@ -5,7 +5,9 @@ use libc::{c_int, c_void, size_t};
 
 use libproc::libproc::bsd_info::BSDInfo;
 use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
-use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind, InSockInfo, SocketInfo, TcpSIState};
+use libproc::libproc::net_info::{
+    InSockInfo, SocketFDInfo, SocketInfo, SocketInfoKind, TcpSIState,
+};
 use libproc::libproc::proc_pid;
 use libproc::libproc::proc_pid::PIDInfo;
 use libproc::libproc::proc_pid::ProcType;
@@ -13,8 +15,8 @@ use libproc::libproc::proc_pid::{listpidinfo, pidinfo, ListThreads};
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use num_traits::{FromPrimitive, ToPrimitive};
 use enum_primitive_derive::Primitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 
 /**
  * Implementation of extracting file and socket descriptors from PIDs on MacOS
@@ -33,7 +35,6 @@ pub fn netstats() {
     processes_and_sockets();
 }
 
-
 #[derive(Debug, Primitive)]
 enum IpType {
     Ipv4 = 0x1,
@@ -41,7 +42,8 @@ enum IpType {
 }
 
 #[derive(Debug, Primitive)]
-enum SocketState { /* aka soi_state */
+enum SocketState {
+    /* aka soi_state */
     NoFileTableRef = 0x0001,
     IsConnected = 0x0002,
     IsConnecting = 0x0004,
@@ -49,7 +51,7 @@ enum SocketState { /* aka soi_state */
     CantSendMore = 0x0010,
     CantReceiveMore = 0x0020,
     ReceiveAtMark = 0x0040,
-    Priviledge =  0x0080,
+    Priviledge = 0x0080,
     NonBlockingIO = 0x0100,
     AsyncIO = 0x0200,
     Incomplete = 0x0800,
@@ -115,7 +117,6 @@ sudo lsof -i
 netstat -anl
 */
 
-
 fn get_pid_path(pid: u32) -> Result<String, String> {
     proc_pid::pidpath(pid as i32)
 }
@@ -124,7 +125,7 @@ fn get_pid_path(pid: u32) -> Result<String, String> {
 
 fn processes_and_sockets() {
     if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
-        // // TODO clean this up 
+        // // TODO clean this up
         // pids
         //     .into_iter()
         //     .map(|pid| (pid, pidinfo::<BSDInfo>(pid as i32, 0)))
@@ -142,8 +143,10 @@ fn processes_and_sockets() {
         //         println!("each");
         //     });
 
-        for pid in pids { /* iterate each pid */
-            if let Ok(info) = pidinfo::<BSDInfo>(pid as i32, 0) { /* get pid bsdinfo */
+        for pid in pids {
+            /* iterate each pid */
+            if let Ok(info) = pidinfo::<BSDInfo>(pid as i32, 0) {
+                /* get pid bsdinfo */
                 if let Ok(fds) = listpidinfo::<ListFDs>(pid as i32, info.pbi_nfiles as usize) {
                     /* */
                     // println!("{:?} {}",  pid, fds.len());
@@ -158,7 +161,7 @@ fn processes_and_sockets() {
 
                                     // SOI = socket info
                                     match socket_info.soi_kind.into() {
-                                        SocketInfoKind::Generic  => {
+                                        SocketInfoKind::Generic => {
                                             println!("Generic");
                                         }
                                         SocketInfoKind::In => {
@@ -167,7 +170,7 @@ fn processes_and_sockets() {
                                                 // curr_udps.push(info);
                                                 // println!("UDP");
                                                 get_socket_info(pid, info, "udp");
-
+                                                println!("");
                                             } else {
                                                 println!("Other sockets");
                                             }
@@ -176,14 +179,17 @@ fn processes_and_sockets() {
                                             // access to the member of `soi_proto` is unsafe becasuse of union type.
                                             let info = unsafe { socket_info.soi_proto.pri_tcp };
                                             let in_socket_info = info.tcpsi_ini;
-                                            print!("({}) ", tcp_state_desc(TcpSIState::from(info.tcpsi_state)));
-                                            get_socket_info(pid, in_socket_info, "tcp");
+
                                             // debug_socket_info(socket_info);
+                                            get_socket_info(pid, in_socket_info, "tcp");
+                                            print!(
+                                                " - {}",
+                                                tcp_state_desc(TcpSIState::from(info.tcpsi_state))
+                                            );
+                                            println!("");
                                         }
                                         // There's also UDS
-                                        SocketInfoKind::Un => {
-
-                                        }
+                                        SocketInfoKind::Un => {}
                                         _ => {
                                             // KernEvent, KernCtl
                                             // println!("Something else? {:?}", x);
@@ -212,7 +218,7 @@ fn debug_socket_info(socket_info: SocketInfo) {
     println!("");
 }
 
-fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
+fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: &str) {
     /* ports */
     let local_port = ntohs(in_socket_info.insi_lport);
     let dest_port = ntohs(in_socket_info.insi_fport);
@@ -228,62 +234,46 @@ fn get_socket_info(pid:u32, in_socket_info: InSockInfo, proto: &str) {
     match IpType::from_u8(in_socket_info.insi_vflag) {
         Some(IpType::Ipv4) => {
             // println!("IPV4");
-            let s_addr = unsafe {
-                local_addr.ina_46.i46a_addr4.s_addr
-            };
+            let s_addr = unsafe { local_addr.ina_46.i46a_addr4.s_addr };
 
-            let f_addr = unsafe {
-                foreign_addr.ina_46.i46a_addr4.s_addr
-            };
+            let f_addr = unsafe { foreign_addr.ina_46.i46a_addr4.s_addr };
 
             source_ip = convert_to_ipv4(s_addr);
             dest_ip = convert_to_ipv4(f_addr);
         }
         Some(IpType::Ipv6) => {
             // println!("IPV6");
-            let s_addr = unsafe {
-                local_addr.ina_6
-            };
+            let s_addr = unsafe { local_addr.ina_6 };
 
-            let f_addr = unsafe {
-                foreign_addr.ina_6
-            };
+            let f_addr = unsafe { foreign_addr.ina_6 };
 
             source_ip = convert_to_ipv6(s_addr.s6_addr);
             dest_ip = convert_to_ipv6(f_addr.s6_addr);
 
             ip_type = 6;
         }
-        _  => {}
+        _ => {}
     }
 
     // TODO add connection status
 
-    let name = format!("{:?}", proc_pid::name(pid as i32));
+    let process_name = match proc_pid::name(pid as i32) {
+        Ok(name) => name,
+        Err(_) => " - ".to_owned(),
+    };
+
+    let proto_str = format!("{}{}", proto.to_uppercase(), ip_type);
 
     if dest_port > 0 {
-        println!(
-                "pid: {} [{}{}] [{}]:{} -> [{}]:{} {}",
-                pid,
-                proto,
-                ip_type,
-                source_ip,
-                local_port,
-                dest_ip,
-                dest_port,
-                name,
-            );
-    }
-    else {
-        println!(
-                "pid: {} [{}{}] [{}]:{} {}",
-                pid,
-                proto,
-                ip_type,
-                source_ip,
-                local_port,
-                name,
-            );
+        print!(
+            "{}\t{}:{} -> {}:{} [{}] ({})",
+            proto_str, source_ip, local_port, dest_ip, dest_port, pid, process_name,
+        );
+    } else {
+        print!(
+            "{}\t{}:{} [{}] ({})",
+            proto_str, source_ip, local_port, pid, process_name,
+        );
     }
 }
 

@@ -60,7 +60,6 @@ fn main() {
     println!("===============");
     test_netstat2();
 
-
     // test_lookups();
 
     // println!(
