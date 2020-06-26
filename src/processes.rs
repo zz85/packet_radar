@@ -20,7 +20,7 @@ use enum_primitive_derive::Primitive;
 
 pub fn netstats() {
     /* uses sys crate */
-    let mut sys = System::new();
+    let sys = System::new();
 
     println!("total memory: {} kB", sys.get_total_memory());
     println!("used memory : {} kB", sys.get_used_memory());
@@ -124,19 +124,22 @@ fn get_pid_path(pid: u32) -> Result<String, String> {
 
 fn processes_and_sockets() {
     if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
-        // TODO clean this up
+        // // TODO clean this up 
         // pids
-        //     .iter()
-        //     .map(|pid| pidinfo::<BSDInfo>(pid as i32, 0))
-        //     .map(|info| listpidinfo::<ListFDs>(pid as i32, info.pbi_nfiles as usize))
-        //     .map(|ref fds| fds.iter())
+        //     .into_iter()
+        //     .map(|pid| (pid, pidinfo::<BSDInfo>(pid as i32, 0)))
+        //     .map(|(pid, info)| (pid, info, listpidinfo::<ListFDs>(pid as i32, info?.pbi_nfiles as usize)))
+        //     .map(|(pid, info, fds)| fds.into_iter())
         //     .map(|fd| {
-        //         match fd.proc_fdtype.into() {
-        //             ProcFDType::Socket => {
-        //                 if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
-        //                 }
-        //             }
-        //         }
+        //         println!("YOZ");
+        //         // match fd.proc_fdtype.into() {
+        //         //     ProcFDType::Socket => {
+        //         //         if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
+        //         //         }
+        //         //     }
+        //         // }
+        //     }).for_each(|v| {
+        //         println!("each");
         //     });
 
         for pid in pids {
@@ -316,7 +319,7 @@ fn netstat_mod(sys: &mut System) {
                 );
 
                 for pid in si.associated_pids {
-                    get_pid_info(&mut sys, pid);
+                    get_pid_info(&sys, pid);
                 }
             }
             ProtocolSocketInfo::Udp(udp_si) => {
@@ -326,14 +329,14 @@ fn netstat_mod(sys: &mut System) {
                 );
 
                 for pid in si.associated_pids {
-                    get_pid_info(&mut sys, pid);
+                    get_pid_info(&sys, pid);
                 }
             }
         }
     }
 }
 
-fn get_pid_info(sys: &mut System, pid: u32) {
+fn get_pid_info(sys: &System, pid: u32) {
     // let pid_str = format!("{}", pid);
     // if let Ok(pid) = Pid::from(pid) {
     match sys.get_process(pid as i32) {
