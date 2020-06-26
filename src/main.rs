@@ -28,6 +28,9 @@ use crossbeam::channel::{unbounded, Receiver};
 mod processes;
 use processes::netstats;
 
+mod test_netstat2;
+use test_netstat2::test_netstat2;
+
 mod structs;
 use structs::{ClientRequest, PacketInfo};
 
@@ -48,30 +51,36 @@ use std::convert::TryFrom;
  */
 
 fn main() {
-    let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
+    // let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
 
     // Test experimentation
     netstats();
+
+    println!("Test netstat 2");
+    println!("===============");
+    test_netstat2();
+
+
     // test_lookups();
 
-    println!(
-        "Websocket server listening on {}. Open html/packet_viz.html",
-        bind
-    );
-    let server = Server::bind(bind).unwrap();
+    // println!(
+    //     "Websocket server listening on {}. Open html/packet_viz.html",
+    //     bind
+    // );
+    // let server = Server::bind(bind).unwrap();
 
-    let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
+    // let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
 
-    // let (tx, rx) = mpsc::channel();
-    let (tx, rx) = unbounded();
+    // // let (tx, rx) = mpsc::channel();
+    // let (tx, rx) = unbounded();
 
-    spawn_broadcast(rx, clients.clone());
+    // spawn_broadcast(rx, clients.clone());
 
-    traceroute::set_callback(tx.clone());
+    // traceroute::set_callback(tx.clone());
 
-    thread::spawn(move || cap(tx));
+    // thread::spawn(move || cap(tx));
 
-    handle_clients(server, clients);
+    // handle_clients(server, clients);
 }
 
 fn spawn_broadcast(rx: Receiver<OwnedMessage>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
