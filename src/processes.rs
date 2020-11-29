@@ -110,6 +110,7 @@ pub enum SockType {
     TCP,
 }
 
+use std::fmt::{self, Display, Formatter};
 #[derive(Debug)]
 pub struct SockInfo {
     pub proto: SockType,
@@ -120,7 +121,38 @@ pub struct SockInfo {
     pub pid: u32,
 }
 
+impl Display for SockInfo {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let proto_str = format!(
+            "{:?}{}",
+            self.proto,
+            if self.local_addr.is_ipv6() { "6" } else { "4" }
+        );
+
+        write!(
+            f,
+            "{}\t{}:{} -> {}:{} [{}]",
+            proto_str,
+            self.local_addr,
+            self.local_port,
+            self.remote_addr,
+            self.remote_port,
+            self.pid
+        )
+    }
+}
+
 fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
+    let process_name = match proc_pid::name(pid as i32) {
+        Ok(name) => name,
+        Err(_) => " - ".to_owned(),
+    };
+
+    // let process_path = match proc_pid::pidpath(pid as i32) {
+    //     Ok(name) => name,
+    //     Err(_) => " - ".to_owned(),
+    // }
+
     match fd.proc_fdtype.into() {
         ProcFDType::Socket => {
             if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
@@ -135,9 +167,9 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
                     SocketInfoKind::In => {
                         if socket_info.soi_protocol == libc::IPPROTO_UDP {
                             let info = unsafe { socket_info.soi_proto.pri_in };
-                            // curr_udps.push(info);
-                            // println!("UDP");
                             let sock = get_socket_info(pid, info, SockType::UDP);
+                            // TODO add connection status
+                            print!("{} ({})", sock, process_name);
                             println!("");
                             return Some(sock);
                         } else {
@@ -151,6 +183,7 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
 
                         // debug_socket_info(socket_info);
                         let sock = get_socket_info(pid, in_socket_info, SockType::TCP);
+                        print!("{} ({})", sock, process_name);
                         print!(" - {}", tcp_state_desc(TcpSIState::from(info.tcpsi_state)));
                         println!("");
 
@@ -171,24 +204,23 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
     None
 }
 
+// Get sockets
 pub fn processes_and_sockets() {
     if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
-        for (pid, fds) in pids
-            .into_iter()
+        pids.into_iter()
             .filter_map(|pid| pidinfo::<BSDInfo>(pid as i32, 0).ok())
             .filter_map(|info| {
                 listpidinfo::<ListFDs>(info.pbi_pid as i32, info.pbi_nfiles as usize)
                     .ok()
                     .map(|f| (info.pbi_pid, f))
             })
-        {
-            // println!("{:?} {}", pid, fds.len());
-            for fd in &fds {
-                read_fd_socket(pid, fd);
-            }
-        }
-        // TODO clean this up
-        //     }).for_each(|v| {
+            .flat_map(|(pid, fds)| {
+                fds.into_iter()
+                    .filter_map(move |fd| read_fd_socket(pid, &fd))
+            })
+            .for_each(|v| {
+                println!("{:?}", v);
+            });
     }
 }
 
@@ -216,7 +248,6 @@ fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: SockType) -> Soc
     let mut source_ip = IpAddr::from(Ipv4Addr::from(0));
     let mut dest_ip = IpAddr::from(Ipv4Addr::from(0));
 
-    let mut ip_type = 4;
     match IpType::from_u8(in_socket_info.insi_vflag) {
         Some(IpType::Ipv4) => {
             // println!("IPV4");
@@ -235,35 +266,8 @@ fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: SockType) -> Soc
 
             source_ip = convert_to_ipv6(s_addr.s6_addr);
             dest_ip = convert_to_ipv6(f_addr.s6_addr);
-
-            ip_type = 6;
         }
         _ => {}
-    }
-
-    // TODO add connection status
-    let process_name = match proc_pid::name(pid as i32) {
-        Ok(name) => name,
-        Err(_) => " - ".to_owned(),
-    };
-
-    // let process_path = match proc_pid::pidpath(pid as i32) {
-    //     Ok(name) => name,
-    //     Err(_) => " - ".to_owned(),
-    // }
-
-    let proto_str = format!("{:?}{}", proto, ip_type);
-
-    if dest_port > 0 {
-        print!(
-            "{}\t{}:{} -> {}:{} [{}] ({})",
-            proto_str, source_ip, local_port, dest_ip, dest_port, pid, process_name,
-        );
-    } else {
-        print!(
-            "{}\t{}:{} [{}] ({})",
-            proto_str, source_ip, local_port, pid, process_name,
-        );
     }
 
     SockInfo {
