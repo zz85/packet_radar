@@ -22,7 +22,7 @@ use super::{handle_echo_reply, handle_time_exceeded};
 
 use std::convert::TryFrom;
 
-use super::netstats;
+// use crate::netstats;
 
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;

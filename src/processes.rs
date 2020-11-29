@@ -1,5 +1,3 @@
-use sysinfo::{NetworkExt, Pid, ProcessExt, ProcessorExt, Signal, System, SystemExt};
-
 use libc;
 use libc::{c_int, c_void, size_t};
 
@@ -21,19 +19,6 @@ use num_traits::{FromPrimitive, ToPrimitive};
 /**
  * Implementation of extracting file and socket descriptors from PIDs on MacOS
  */
-
-pub fn netstats() {
-    /* uses sys crate */
-    let sys = System::new();
-
-    println!("total memory: {} kB", sys.get_total_memory());
-    println!("used memory : {} kB", sys.get_used_memory());
-    println!("total swap  : {} kB", sys.get_total_swap());
-    println!("used swap   : {} kB", sys.get_used_swap());
-
-    /* use lower level libproc for mac sockets */
-    processes_and_sockets();
-}
 
 #[derive(Debug, Primitive)]
 enum IpType {
@@ -123,8 +108,14 @@ fn get_pid_path(pid: u32) -> Result<String, String> {
 
 /* proc pid: proc_listpids, proc_name, proc_pidinfo, proc_regionfilename, proc_pidpath */
 
-fn processes_and_sockets() {
+pub fn processes_and_sockets() {
     if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
+        // pids.into_iter()
+        //     .map(|pid| pidinfo::<BSDInfo>(pid as i32, 0))
+        //     .filter_map(Result::Ok)
+        //     .map(|info| listpidinfo::<ListFDs>(info.pid as i32, info.pbi_nfiles as usize))
+        //     .filter_map(Result::Ok);
+
         // // TODO clean this up
         // pids
         //     .into_iter()
@@ -287,28 +278,4 @@ fn convert_to_ipv4(addr: u32) -> IpAddr {
 
 fn convert_to_ipv6(addr: [u8; 16]) -> IpAddr {
     IpAddr::V6(Ipv6Addr::from(addr))
-}
-
-fn get_pid_info(sys: &System, pid: u32) {
-    // let pid_str = format!("{}", pid);
-    // if let Ok(pid) = Pid::from(pid) {
-    match sys.get_process(pid as i32) {
-        Some(p) => {
-            println!(
-                "{}\t{:?}\t{}\t{}\t{}",
-                p.name(),
-                p.exe(),
-                p.memory(),
-                p.status(),
-                p.start_time()
-            );
-            // cpu_usage()
-            // println!("{:?}", *p)
-            // https://github.com/GuillaumeGomez/sysinfo/blob/74602704a7e21192c08fce1fc9cce5d126e7b632/src/mac/process.rs#L172
-            // executable path, current working directory
-            // cpu, root path, parent
-            // command,  memory, environment
-        }
-        None => println!("pid \"{:?}\" not found", pid),
-    };
 }
