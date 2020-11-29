@@ -106,6 +106,8 @@ pub fn handle_clients(
                                     broadcast(clients.clone(), r)
                                 };
                             }
+                            "processes" => {}
+                            "sockets" => {}
                             _ => {}
                         }
 

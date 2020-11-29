@@ -22,8 +22,6 @@ use super::{handle_echo_reply, handle_time_exceeded};
 
 use std::convert::TryFrom;
 
-// use crate::netstats;
-
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::sync::Server;

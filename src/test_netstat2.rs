@@ -1,9 +1,15 @@
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
 
-pub fn test_netstat2() -> Result<(), Box<dyn std::error::Error>> {
+pub fn test_netstat2() {
     let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
     let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
-    let sockets_info = get_sockets_info(af_flags, proto_flags)?;
+    let sockets_info = match get_sockets_info(af_flags, proto_flags) {
+        Ok(sockets_info) => sockets_info,
+        Err(e) => {
+            println!("{:?}", e);
+            return;
+        }
+    };
 
     let sys = get_sys();
 
@@ -36,8 +42,6 @@ pub fn test_netstat2() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
-    Ok(())
 }
 
 /*

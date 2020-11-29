@@ -104,14 +104,14 @@ netstat -anl
 
 /* proc pid: proc_listpids, proc_name, proc_pidinfo, proc_regionfilename, proc_pidpath */
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SockType {
     UDP,
     TCP,
 }
 
 use std::fmt::{self, Display, Formatter};
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SockInfo {
     pub proto: SockType,
     pub local_port: u16,
@@ -143,10 +143,10 @@ impl Display for SockInfo {
 }
 
 fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
-    let process_name = match proc_pid::name(pid as i32) {
-        Ok(name) => name,
-        Err(_) => " - ".to_owned(),
-    };
+    // let process_name = match proc_pid::name(pid as i32) {
+    //     Ok(name) => name,
+    //     Err(_) => " - ".to_owned(),
+    // };
 
     // let process_path = match proc_pid::pidpath(pid as i32) {
     //     Ok(name) => name,
@@ -169,8 +169,8 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
                             let info = unsafe { socket_info.soi_proto.pri_in };
                             let sock = get_socket_info(pid, info, SockType::UDP);
                             // TODO add connection status
-                            print!("{} ({})", sock, process_name);
-                            println!("");
+                            // print!("{} ({})", sock, process_name);
+                            // println!("");
                             return Some(sock);
                         } else {
                             println!("Other sockets");
@@ -183,9 +183,9 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
 
                         // debug_socket_info(socket_info);
                         let sock = get_socket_info(pid, in_socket_info, SockType::TCP);
-                        print!("{} ({})", sock, process_name);
-                        print!(" - {}", tcp_state_desc(TcpSIState::from(info.tcpsi_state)));
-                        println!("");
+                        // print!("{} ({})", sock, process_name);
+                        // print!(" - {}", tcp_state_desc(TcpSIState::from(info.tcpsi_state)));
+                        // println!("");
 
                         return Some(sock);
                     }
@@ -205,23 +205,28 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
 }
 
 // Get sockets
-pub fn processes_and_sockets() {
-    if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
-        pids.into_iter()
-            .filter_map(|pid| pidinfo::<BSDInfo>(pid as i32, 0).ok())
-            .filter_map(|info| {
-                listpidinfo::<ListFDs>(info.pbi_pid as i32, info.pbi_nfiles as usize)
-                    .ok()
-                    .map(|f| (info.pbi_pid, f))
-            })
-            .flat_map(|(pid, fds)| {
-                fds.into_iter()
-                    .filter_map(move |fd| read_fd_socket(pid, &fd))
-            })
-            .for_each(|v| {
-                println!("{:?}", v);
-            });
-    }
+pub fn processes_and_sockets() -> Vec<SockInfo> {
+    let socks: Vec<SockInfo> = proc_pid::listpids(ProcType::ProcAllPIDS)
+        .ok()
+        .map(|pids| {
+            pids.into_iter()
+                .filter_map(|pid| pidinfo::<BSDInfo>(pid as i32, 0).ok())
+                .filter_map(|info| {
+                    listpidinfo::<ListFDs>(info.pbi_pid as i32, info.pbi_nfiles as usize)
+                        .ok()
+                        .map(|f| (info.pbi_pid, f))
+                })
+                .flat_map(|(pid, fds)| {
+                    fds.into_iter()
+                        .filter_map(move |fd| read_fd_socket(pid, &fd))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    socks.iter().for_each(|v| println!("{}", v));
+
+    socks
 }
 
 fn debug_socket_info(socket_info: SocketInfo) {
@@ -290,4 +295,24 @@ fn convert_to_ipv4(addr: u32) -> IpAddr {
 
 fn convert_to_ipv6(addr: [u8; 16]) -> IpAddr {
     IpAddr::V6(Ipv6Addr::from(addr))
+}
+
+fn test() {
+    use crate::test_netstat2::{get_sys, test_netstat2};
+    use std::time::Instant;
+
+    // Test experimentation
+    println!("Native MacOS network descriptions");
+    println!("===============");
+    let start = Instant::now();
+    processes_and_sockets();
+    println!("netstat1 {:?}", start.elapsed());
+
+    println!("Test netstat 2");
+    println!("===============");
+    let start = Instant::now();
+    test_netstat2();
+    println!("netstat2 {:?}", start.elapsed());
+
+    /* track connection, lookup connections to pid, count pid ++ */
 }

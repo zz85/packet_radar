@@ -26,10 +26,8 @@ use traceroute::{handle_echo_reply, handle_time_exceeded};
 use crossbeam::channel::{unbounded, Receiver};
 
 mod processes;
-use processes::processes_and_sockets;
 
 mod test_netstat2;
-use test_netstat2::{get_sys, test_netstat2};
 
 mod structs;
 use structs::{ClientRequest, PacketInfo};
@@ -45,29 +43,12 @@ use packet_capture::cap;
 
 use std::convert::TryFrom;
 
-use std::time::Instant;
-
 /**
  * This file starts a packet capture and a websocket server
  * Events are forwarded to connected clients
  */
 
 fn main() {
-    // Test experimentation
-    println!("Native MacOS network descriptions");
-    println!("===============");
-    let start = Instant::now();
-    processes_and_sockets();
-    println!("netstat1 {:?}", start.elapsed());
-
-    println!("Test netstat 2");
-    println!("===============");
-    let start = Instant::now();
-    test_netstat2();
-    println!("netstat2 {:?}", start.elapsed());
-
-    /* track connection, lookup connections to pid, count pid ++ */
-
     // test_lookups();
 
     let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
