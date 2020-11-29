@@ -2,7 +2,7 @@
 
 Packet Radar is a realtime network traffic visualization experiment.
 
-It uses pcap to capture packets and displays the information in various ways.
+It uses pcap to capture packets and displays the information in various ways like wireshark.
 
 - packet fight viz - visualizes and animates packets transferring between hosts.
 - packet stats - a dashboard showing real-time network telemetry like data rates.
@@ -54,7 +54,11 @@ open `html/packet_viz.html` in your browser
 - Joshua Koo
 - Yang Bin Kwok
 
-IDEAs / TODO
+### Related projects
+- https://github.com/kpcyrd/sniffglue
+- https://github.com/imsnif/bandwhich
+
+### IDEAs / TODO
 - [x] DNS resolution
 - [x] Find local addresses
 - [ ] Whois

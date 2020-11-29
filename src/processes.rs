@@ -247,11 +247,17 @@ fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: &str) {
     }
 
     // TODO add connection status
-
     let process_name = match proc_pid::name(pid as i32) {
         Ok(name) => name,
         Err(_) => " - ".to_owned(),
     };
+
+    let process_path = match proc_pid::pidpath(pid as i32) {
+        Ok(name) => name,
+        Err(_) => " - ".to_owned(),
+    };
+
+    let process_name = format!("{}{}", process_path, process_name);
 
     let proto_str = format!("{}{}", proto.to_uppercase(), ip_type);
 
