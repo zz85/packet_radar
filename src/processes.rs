@@ -102,98 +102,71 @@ sudo lsof -i
 netstat -anl
 */
 
-fn get_pid_path(pid: u32) -> Result<String, String> {
-    proc_pid::pidpath(pid as i32)
-}
-
 /* proc pid: proc_listpids, proc_name, proc_pidinfo, proc_regionfilename, proc_pidpath */
 
 pub fn processes_and_sockets() {
     if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
-        // pids.into_iter()
-        //     .map(|pid| pidinfo::<BSDInfo>(pid as i32, 0))
-        //     .filter_map(Result::Ok)
-        //     .map(|info| listpidinfo::<ListFDs>(info.pid as i32, info.pbi_nfiles as usize))
-        //     .filter_map(Result::Ok);
+        for (pid, fds) in pids
+            .into_iter()
+            .filter_map(|pid| pidinfo::<BSDInfo>(pid as i32, 0).ok())
+            .filter_map(|info| {
+                listpidinfo::<ListFDs>(info.pbi_pid as i32, info.pbi_nfiles as usize)
+                    .ok()
+                    .map(|f| (info.pbi_pid, f))
+            })
+        {
+            // println!("{:?} {}", pid, fds.len());
+            for fd in &fds {
+                match fd.proc_fdtype.into() {
+                    ProcFDType::Socket => {
+                        if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
+                            let socket_info = socket.psi;
+                            // debug_socket_info(socket_info);
 
-        // // TODO clean this up
-        // pids
-        //     .into_iter()
-        //     .map(|pid| (pid, pidinfo::<BSDInfo>(pid as i32, 0)))
-        //     .map(|(pid, info)| (pid, info, listpidinfo::<ListFDs>(pid as i32, info?.pbi_nfiles as usize)))
-        //     .map(|(pid, info, fds)| fds.into_iter())
-        //     .map(|fd| {
-        //         println!("YOZ");
-        //         // match fd.proc_fdtype.into() {
-        //         //     ProcFDType::Socket => {
-        //         //         if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
-        //         //         }
-        //         //     }
-        //         // }
-        //     }).for_each(|v| {
-        //         println!("each");
-        //     });
-
-        for pid in pids {
-            /* iterate each pid */
-            if let Ok(info) = pidinfo::<BSDInfo>(pid as i32, 0) {
-                /* get pid bsdinfo */
-                if let Ok(fds) = listpidinfo::<ListFDs>(pid as i32, info.pbi_nfiles as usize) {
-                    /* */
-                    // println!("{:?} {}",  pid, fds.len());
-                    for fd in &fds {
-                        match fd.proc_fdtype.into() {
-                            ProcFDType::Socket => {
-                                if let Ok(socket) =
-                                    pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd)
-                                {
-                                    let socket_info = socket.psi;
-                                    // debug_socket_info(socket_info);
-
-                                    // SOI = socket info
-                                    match socket_info.soi_kind.into() {
-                                        SocketInfoKind::Generic => {
-                                            println!("Generic");
-                                        }
-                                        SocketInfoKind::In => {
-                                            if socket_info.soi_protocol == libc::IPPROTO_UDP {
-                                                let info = unsafe { socket_info.soi_proto.pri_in };
-                                                // curr_udps.push(info);
-                                                // println!("UDP");
-                                                get_socket_info(pid, info, "udp");
-                                                println!("");
-                                            } else {
-                                                println!("Other sockets");
-                                            }
-                                        }
-                                        SocketInfoKind::Tcp => {
-                                            // access to the member of `soi_proto` is unsafe becasuse of union type.
-                                            let info = unsafe { socket_info.soi_proto.pri_tcp };
-                                            let in_socket_info = info.tcpsi_ini;
-
-                                            // debug_socket_info(socket_info);
-                                            get_socket_info(pid, in_socket_info, "tcp");
-                                            print!(
-                                                " - {}",
-                                                tcp_state_desc(TcpSIState::from(info.tcpsi_state))
-                                            );
-                                            println!("");
-                                        }
-                                        // There's also UDS
-                                        SocketInfoKind::Un => {}
-                                        _ => {
-                                            // KernEvent, KernCtl
-                                            // println!("Something else? {:?}", x);
-                                        }
+                            // SOI = socket info
+                            match socket_info.soi_kind.into() {
+                                SocketInfoKind::Generic => {
+                                    println!("Generic");
+                                }
+                                SocketInfoKind::In => {
+                                    if socket_info.soi_protocol == libc::IPPROTO_UDP {
+                                        let info = unsafe { socket_info.soi_proto.pri_in };
+                                        // curr_udps.push(info);
+                                        // println!("UDP");
+                                        get_socket_info(pid, info, "udp");
+                                        println!("");
+                                    } else {
+                                        println!("Other sockets");
                                     }
                                 }
+                                SocketInfoKind::Tcp => {
+                                    // access to the member of `soi_proto` is unsafe becasuse of union type.
+                                    let info = unsafe { socket_info.soi_proto.pri_tcp };
+                                    let in_socket_info = info.tcpsi_ini;
+
+                                    // debug_socket_info(socket_info);
+                                    get_socket_info(pid, in_socket_info, "tcp");
+                                    print!(
+                                        " - {}",
+                                        tcp_state_desc(TcpSIState::from(info.tcpsi_state))
+                                    );
+                                    println!("");
+                                }
+                                // There's also UDS
+                                SocketInfoKind::Un => {}
+                                _ => {
+                                    // KernEvent, KernCtl
+                                    // println!("Something else? {:?}", x);
+                                }
                             }
-                            _ => (),
                         }
                     }
+                    _ => (),
                 }
             }
         }
+        // TODO clean this up
+        //     }).for_each(|v| {
     }
 }
 
@@ -252,12 +225,10 @@ fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: &str) {
         Err(_) => " - ".to_owned(),
     };
 
-    let process_path = match proc_pid::pidpath(pid as i32) {
-        Ok(name) => name,
-        Err(_) => " - ".to_owned(),
-    };
-
-    let process_name = format!("{}{}", process_path, process_name);
+    // let process_path = match proc_pid::pidpath(pid as i32) {
+    //     Ok(name) => name,
+    //     Err(_) => " - ".to_owned(),
+    // }
 
     let proto_str = format!("{}{}", proto.to_uppercase(), ip_type);
 
