@@ -70,25 +70,25 @@ fn main() {
 
     // test_lookups();
 
-    // let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
-    // println!(
-    //     "Websocket server listening on {}. Open html/packet_viz.html",
-    //     bind
-    // );
-    // let server = Server::bind(bind).unwrap();
+    let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
+    println!(
+        "Websocket server listening on {}. Open html/packet_viz.html",
+        bind
+    );
+    let server = Server::bind(bind).unwrap();
 
-    // let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
+    let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
 
-    // // let (tx, rx) = mpsc::channel();
-    // let (tx, rx) = unbounded();
+    // let (tx, rx) = mpsc::channel();
+    let (tx, rx) = unbounded();
 
-    // spawn_broadcast(rx, clients.clone());
+    spawn_broadcast(rx, clients.clone());
 
-    // traceroute::set_callback(tx.clone());
+    traceroute::set_callback(tx.clone());
 
-    // thread::spawn(move || cap(tx));
+    thread::spawn(move || cap(tx));
 
-    // handle_clients(server, clients);
+    handle_clients(server, clients);
 }
 
 fn spawn_broadcast(rx: Receiver<OwnedMessage>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {

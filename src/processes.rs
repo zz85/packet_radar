@@ -2,7 +2,7 @@ use libc;
 use libc::{c_int, c_void, size_t};
 
 use libproc::libproc::bsd_info::BSDInfo;
-use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
+use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDInfo, ProcFDType};
 use libproc::libproc::net_info::{
     InSockInfo, SocketFDInfo, SocketInfo, SocketInfoKind, TcpSIState,
 };
@@ -104,6 +104,73 @@ netstat -anl
 
 /* proc pid: proc_listpids, proc_name, proc_pidinfo, proc_regionfilename, proc_pidpath */
 
+#[derive(Debug)]
+pub enum SockType {
+    UDP,
+    TCP,
+}
+
+#[derive(Debug)]
+pub struct SockInfo {
+    pub proto: SockType,
+    pub local_port: u16,
+    pub local_addr: IpAddr,
+    pub remote_port: u16,
+    pub remote_addr: IpAddr,
+    pub pid: u32,
+}
+
+fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
+    match fd.proc_fdtype.into() {
+        ProcFDType::Socket => {
+            if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
+                let socket_info = socket.psi;
+                // debug_socket_info(socket_info);
+
+                // SOI = socket info
+                match socket_info.soi_kind.into() {
+                    SocketInfoKind::Generic => {
+                        println!("Generic");
+                    }
+                    SocketInfoKind::In => {
+                        if socket_info.soi_protocol == libc::IPPROTO_UDP {
+                            let info = unsafe { socket_info.soi_proto.pri_in };
+                            // curr_udps.push(info);
+                            // println!("UDP");
+                            let sock = get_socket_info(pid, info, SockType::UDP);
+                            println!("");
+                            return Some(sock);
+                        } else {
+                            println!("Other sockets");
+                        }
+                    }
+                    SocketInfoKind::Tcp => {
+                        // access to the member of `soi_proto` is unsafe becasuse of union type.
+                        let info = unsafe { socket_info.soi_proto.pri_tcp };
+                        let in_socket_info = info.tcpsi_ini;
+
+                        // debug_socket_info(socket_info);
+                        let sock = get_socket_info(pid, in_socket_info, SockType::TCP);
+                        print!(" - {}", tcp_state_desc(TcpSIState::from(info.tcpsi_state)));
+                        println!("");
+
+                        return Some(sock);
+                    }
+                    // There's also UDS
+                    SocketInfoKind::Un => {}
+                    _ => {
+                        // KernEvent, KernCtl
+                        // println!("Something else? {:?}", x);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    None
+}
+
 pub fn processes_and_sockets() {
     if let Ok(pids) = proc_pid::listpids(ProcType::ProcAllPIDS) {
         for (pid, fds) in pids
@@ -117,52 +184,7 @@ pub fn processes_and_sockets() {
         {
             // println!("{:?} {}", pid, fds.len());
             for fd in &fds {
-                match fd.proc_fdtype.into() {
-                    ProcFDType::Socket => {
-                        if let Ok(socket) = pidfdinfo::<SocketFDInfo>(pid as i32, fd.proc_fd) {
-                            let socket_info = socket.psi;
-                            // debug_socket_info(socket_info);
-
-                            // SOI = socket info
-                            match socket_info.soi_kind.into() {
-                                SocketInfoKind::Generic => {
-                                    println!("Generic");
-                                }
-                                SocketInfoKind::In => {
-                                    if socket_info.soi_protocol == libc::IPPROTO_UDP {
-                                        let info = unsafe { socket_info.soi_proto.pri_in };
-                                        // curr_udps.push(info);
-                                        // println!("UDP");
-                                        get_socket_info(pid, info, "udp");
-                                        println!("");
-                                    } else {
-                                        println!("Other sockets");
-                                    }
-                                }
-                                SocketInfoKind::Tcp => {
-                                    // access to the member of `soi_proto` is unsafe becasuse of union type.
-                                    let info = unsafe { socket_info.soi_proto.pri_tcp };
-                                    let in_socket_info = info.tcpsi_ini;
-
-                                    // debug_socket_info(socket_info);
-                                    get_socket_info(pid, in_socket_info, "tcp");
-                                    print!(
-                                        " - {}",
-                                        tcp_state_desc(TcpSIState::from(info.tcpsi_state))
-                                    );
-                                    println!("");
-                                }
-                                // There's also UDS
-                                SocketInfoKind::Un => {}
-                                _ => {
-                                    // KernEvent, KernCtl
-                                    // println!("Something else? {:?}", x);
-                                }
-                            }
-                        }
-                    }
-                    _ => (),
-                }
+                read_fd_socket(pid, fd);
             }
         }
         // TODO clean this up
@@ -182,7 +204,7 @@ fn debug_socket_info(socket_info: SocketInfo) {
     println!("");
 }
 
-fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: &str) {
+fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: SockType) -> SockInfo {
     /* ports */
     let local_port = ntohs(in_socket_info.insi_lport);
     let dest_port = ntohs(in_socket_info.insi_fport);
@@ -230,7 +252,7 @@ fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: &str) {
     //     Err(_) => " - ".to_owned(),
     // }
 
-    let proto_str = format!("{}{}", proto.to_uppercase(), ip_type);
+    let proto_str = format!("{:?}{}", proto, ip_type);
 
     if dest_port > 0 {
         print!(
@@ -242,6 +264,15 @@ fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: &str) {
             "{}\t{}:{} [{}] ({})",
             proto_str, source_ip, local_port, pid, process_name,
         );
+    }
+
+    SockInfo {
+        local_addr: source_ip,
+        local_port,
+        remote_addr: dest_ip,
+        remote_port: dest_port,
+        proto,
+        pid,
     }
 }
 
