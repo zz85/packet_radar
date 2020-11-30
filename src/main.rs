@@ -50,6 +50,7 @@ use std::convert::TryFrom;
 
 fn main() {
     // test_lookups();
+    processes::start_monitoring();
 
     let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
     println!(

@@ -121,6 +121,17 @@ pub struct SockInfo {
     pub pid: u32,
 }
 
+impl SockInfo {
+    pub fn four_tuple(&self) -> (IpAddr, u16, IpAddr, u16) {
+        (
+            self.local_addr,
+            self.local_port,
+            self.remote_addr,
+            self.remote_port,
+        )
+    }
+}
+
 impl Display for SockInfo {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let proto_str = format!(
@@ -140,6 +151,59 @@ impl Display for SockInfo {
             self.pid
         )
     }
+}
+
+use std::collections::HashMap;
+use std::sync::RwLock;
+use std::thread;
+use std::time::{Duration, Instant};
+
+// lazy_static! {
+//     pub static ref CONNECTIONS: RwLock<HashMap<String, String>> = Default::default();
+//     pub static ref PROCESSES: RwLock<HashMap<u32, String>> = Default::default();
+// }
+
+struct ProcessMeta {
+    pid: u32,
+    name: String,
+}
+
+pub fn start_monitoring() {
+    thread::spawn(move || {
+        let mut connections: HashMap<(IpAddr, u16, IpAddr, u16), u32> = Default::default();
+        let mut processes: HashMap<u32, ProcessMeta> = Default::default();
+
+        loop {
+            println!("processes_and_sockets");
+            thread::sleep(Duration::from_millis(1500));
+            let start = Instant::now();
+            let sockets = processes_and_sockets();
+            let s: Vec<SockInfo> = sockets
+                .into_iter()
+                .filter(|sock| !processes.contains_key(&sock.pid))
+                .collect();
+
+            s.iter().for_each(|sock| {
+                let process_path = match proc_pid::pidpath(sock.pid as i32) {
+                    Ok(name) => name,
+                    Err(_) => " - ".to_owned(),
+                };
+
+                let meta = ProcessMeta {
+                    pid: sock.pid,
+                    name: process_path,
+                };
+
+                processes.insert(sock.pid, meta);
+            });
+
+            s.iter().for_each(|s| {
+                connections.insert(s.four_tuple(), s.pid);
+            });
+
+            println!("netstat1 {:?}", start.elapsed());
+        }
+    });
 }
 
 fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
@@ -224,7 +288,7 @@ pub fn processes_and_sockets() -> Vec<SockInfo> {
         })
         .unwrap_or_default();
 
-    socks.iter().for_each(|v| println!("{}", v));
+    // socks.iter().for_each(|v| println!("{}", v));
 
     socks
 }
