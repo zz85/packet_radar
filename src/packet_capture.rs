@@ -47,7 +47,7 @@ fn is_local(ip: IpAddr) -> bool {
     return false;
 }
 
-pub fn cap(tx: Sender<OwnedMessage>) {
+pub fn cap(tx: Sender<PacketInfo>) {
     println!("Running pcap...");
     println!("Devices {:?}", Device::list());
 
@@ -161,7 +161,7 @@ pub fn cap(tx: Sender<OwnedMessage>) {
     }
 }
 
-fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<OwnedMessage>) {
+fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<PacketInfo>) {
     let ether_type = ether.get_ethertype();
 
     match ether_type {
@@ -187,7 +187,7 @@ fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<OwnedMessage>) {
     }
 }
 
-fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
+fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<PacketInfo>) {
     let header = Ipv4Packet::new(ethernet.payload());
     if let Some(header) = header {
         // println!("TTL {}", header.get_ttl());
@@ -205,7 +205,7 @@ fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Send
     }
 }
 
-fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<OwnedMessage>) {
+fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<PacketInfo>) {
     let header = Ipv6Packet::new(ethernet.payload());
     if let Some(header) = header {
         handle_transport_protocol(
@@ -226,7 +226,7 @@ fn handle_udp_packet(
     source: IpAddr,
     destination: IpAddr,
     packet: &[u8],
-    tx: &Sender<OwnedMessage>,
+    tx: &Sender<PacketInfo>,
 ) {
     let udp = UdpPacket::new(packet);
 
@@ -240,8 +240,7 @@ fn handle_udp_packet(
             t: String::from("u"),
         };
 
-        let payload = serde_json::to_string(&packet_info).unwrap();
-        tx.send(OwnedMessage::Text(payload)).unwrap();
+        tx.send(packet_info).unwrap();
 
         if DEBUG {
             println!(
@@ -277,7 +276,7 @@ fn handle_tcp_packet(
     source: IpAddr,
     destination: IpAddr,
     packet: &[u8],
-    tx: &Sender<OwnedMessage>,
+    tx: &Sender<PacketInfo>,
 ) {
     let tcp = TcpPacket::new(packet);
     if let Some(tcp) = tcp {
@@ -328,8 +327,7 @@ fn handle_tcp_packet(
             t: String::from("t"),
         };
 
-        let payload = serde_json::to_string(&packet_info).unwrap();
-        tx.send(OwnedMessage::Text(payload)).unwrap();
+        tx.send(packet_info).unwrap();
 
         // strip tcp headers
         let packet = tcp.payload();
@@ -346,7 +344,7 @@ fn handle_transport_protocol(
     destination: IpAddr,
     protocol: IpNextHeaderProtocol,
     packet: &[u8],
-    tx: &Sender<OwnedMessage>,
+    tx: &Sender<PacketInfo>,
 ) {
     // println!("Protocol: {}, Source: {}, Destination: {} ({})", protocol, source, destination, dest_host);
 

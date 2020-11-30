@@ -64,22 +64,26 @@ fn main() {
     // let (tx, rx) = mpsc::channel();
     let (tx, rx) = unbounded();
 
+    // new_cap(tx);
+
     spawn_broadcast(rx, clients.clone());
 
-    traceroute::set_callback(tx.clone());
+    // traceroute::set_callback(tx.clone());
 
     thread::spawn(move || cap(tx));
 
     handle_clients(server, clients);
 }
 
-fn spawn_broadcast(rx: Receiver<OwnedMessage>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
+fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
     thread::spawn(move || {
-        for message in rx.iter() {
-            clients
-                .write()
-                .unwrap()
-                .drain_filter(|c| c.send_message(&message).is_err());
+        for packet_info in rx.iter() {
+            clients.write().unwrap().drain_filter(|c| {
+                let payload = serde_json::to_string(&packet_info).unwrap();
+                let message = OwnedMessage::Text(payload);
+
+                c.send_message(&message).is_err()
+            });
         }
     });
 }
