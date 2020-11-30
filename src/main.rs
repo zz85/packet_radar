@@ -49,9 +49,7 @@ use std::convert::TryFrom;
  */
 
 fn main() {
-    // test_lookups();
-    processes::start_monitoring();
-
+    // test_lookups()
     let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
     println!(
         "Websocket server listening on {}. Open html/packet_viz.html",
@@ -64,13 +62,13 @@ fn main() {
     // let (tx, rx) = mpsc::channel();
     let (tx, rx) = unbounded();
 
-    // new_cap(tx);
-
-    spawn_broadcast(rx, clients.clone());
+    // spawn_broadcast(rx, clients.clone());
 
     // traceroute::set_callback(tx.clone());
 
     thread::spawn(move || cap(tx));
+
+    processes::start_monitoring(rx);
 
     handle_clients(server, clients);
 }

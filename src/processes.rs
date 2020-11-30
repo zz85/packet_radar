@@ -1,3 +1,4 @@
+use crossbeam::Receiver;
 use libc;
 use libc::{c_int, c_void, size_t};
 
@@ -11,7 +12,11 @@ use libproc::libproc::proc_pid::PIDInfo;
 use libproc::libproc::proc_pid::ProcType;
 use libproc::libproc::proc_pid::{listpidinfo, pidinfo, ListThreads};
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    cmp,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+};
 
 use enum_primitive_derive::Primitive;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -122,13 +127,22 @@ pub struct SockInfo {
 }
 
 impl SockInfo {
-    pub fn four_tuple(&self) -> (IpAddr, u16, IpAddr, u16) {
+    pub fn four_tuple(&self) -> (String, u16, String, u16) {
         (
-            self.local_addr,
+            self.local_addr.to_string(),
             self.local_port,
-            self.remote_addr,
+            self.remote_addr.to_string(),
             self.remote_port,
         )
+    }
+}
+
+fn unique_tuple(tuple: (String, u16, String, u16)) -> (String, u16, String, u16) {
+    let (a1, p1, a2, p2) = tuple;
+
+    match a1.cmp(&a2) {
+        cmp::Ordering::Less => (a1, p1, a2, p2),
+        _ => (a2, p2, a1, p1),
     }
 }
 
@@ -163,16 +177,57 @@ use std::time::{Duration, Instant};
 //     pub static ref PROCESSES: RwLock<HashMap<u32, String>> = Default::default();
 // }
 
+#[derive(Debug, Clone)]
 struct ProcessMeta {
     pid: u32,
     name: String,
+    bytes: u64,
 }
 
-pub fn start_monitoring() {
-    thread::spawn(move || {
-        let mut connections: HashMap<(IpAddr, u16, IpAddr, u16), u32> = Default::default();
-        let mut processes: HashMap<u32, ProcessMeta> = Default::default();
+use crate::PacketInfo;
 
+pub fn start_monitoring(rx: Receiver<PacketInfo>) {
+    // TODO move these into a single protected struct and avoid unwraps!
+    let mut connections: Arc<RwLock<HashMap<(String, u16, String, u16), u32>>> = Default::default();
+    let mut processes: Arc<RwLock<HashMap<u32, ProcessMeta>>> = Default::default();
+
+    let connections1 = connections.clone();
+    let processes1 = processes.clone();
+
+    thread::spawn(move || {
+        let connections = connections1;
+        for msg in rx.iter() {
+            // println!("Got {:?}", msg);
+
+            let tuple = unique_tuple((msg.src, msg.src_port, msg.dest, msg.dest_port));
+            let connections = connections.read().unwrap();
+            let v = connections.get(&tuple);
+
+            if v.is_some() {
+                let mut processes = processes1.write().unwrap();
+                let len = msg.len;
+                let pid = v.unwrap();
+                processes.entry(*pid).and_modify(|e| e.bytes += len as u64);
+            } else {
+                // println!("no");
+            }
+        }
+    });
+
+    let top_processes = processes.clone();
+
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(3000));
+
+        let mut top: Vec<ProcessMeta> = top_processes.read().unwrap().values().cloned().collect();
+        top.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+        println!("Top");
+        top[..5].into_iter().for_each(|v| println!("{:?}", v));
+    });
+
+    let connections2 = connections.clone();
+    thread::spawn(move || {
+        let connections = connections2;
         loop {
             println!("processes_and_sockets");
             thread::sleep(Duration::from_millis(1500));
@@ -180,7 +235,7 @@ pub fn start_monitoring() {
             let sockets = processes_and_sockets();
             let s: Vec<SockInfo> = sockets
                 .into_iter()
-                .filter(|sock| !processes.contains_key(&sock.pid))
+                .filter(|sock| !processes.read().unwrap().contains_key(&sock.pid))
                 .collect();
 
             s.iter().for_each(|sock| {
@@ -192,16 +247,18 @@ pub fn start_monitoring() {
                 let meta = ProcessMeta {
                     pid: sock.pid,
                     name: process_path,
+                    bytes: 0,
                 };
 
-                processes.insert(sock.pid, meta);
+                processes.write().unwrap().insert(sock.pid, meta);
             });
 
             s.iter().for_each(|s| {
-                connections.insert(s.four_tuple(), s.pid);
+                connections
+                    .write()
+                    .unwrap()
+                    .insert(unique_tuple(s.four_tuple()), s.pid);
             });
-
-            println!("netstat1 {:?}", start.elapsed());
         }
     });
 }
