@@ -36,7 +36,7 @@ const STATS: bool = false;
 
 const PCAP: bool = false;
 
-fn is_local(ip: IpAddr) -> bool {
+pub fn is_local(ip: IpAddr) -> bool {
     let interfaces = pnet::datalink::interfaces();
     for interface in interfaces {
         for ip in interface.ips {
@@ -232,7 +232,7 @@ fn handle_udp_packet(
 
     if let Some(udp) = udp {
         let packet_info = PacketInfo {
-            len: udp.get_length(),
+            len: packet.len() as u16,
             dest: destination.to_string(),
             src: source.to_string(),
             dest_port: udp.get_destination(),
@@ -316,10 +316,10 @@ fn handle_tcp_packet(
         // tcp.get_acknowledgement()
         // get_sequence
         // options raw
-        // get window
 
+        // packet_size
         let packet_info = PacketInfo {
-            len: u16::try_from(tcp.packet_size()).unwrap(),
+            len: packet.len() as u16, // this is correct, do not use tcp.packet_size();
             dest: destination.to_string(),
             src: source.to_string(),
             dest_port: tcp.get_destination(),

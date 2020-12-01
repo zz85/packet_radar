@@ -13,13 +13,15 @@ use libproc::libproc::proc_pid::ProcType;
 use libproc::libproc::proc_pid::{listpidinfo, pidinfo, ListThreads};
 
 use std::{
-    cmp,
+    cmp, default,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
 };
 
 use enum_primitive_derive::Primitive;
 use num_traits::{FromPrimitive, ToPrimitive};
+
+use pretty_bytes::converter::convert;
 
 /**
  * Implementation of extracting file and socket descriptors from PIDs on MacOS
@@ -115,6 +117,7 @@ pub enum SockType {
     TCP,
 }
 
+
 use std::fmt::{self, Display, Formatter};
 #[derive(Debug, Clone)]
 pub struct SockInfo {
@@ -172,11 +175,6 @@ use std::sync::RwLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-// lazy_static! {
-//     pub static ref CONNECTIONS: RwLock<HashMap<String, String>> = Default::default();
-//     pub static ref PROCESSES: RwLock<HashMap<u32, String>> = Default::default();
-// }
-
 #[derive(Debug, Clone)]
 struct ProcessMeta {
     pid: u32,
@@ -184,61 +182,96 @@ struct ProcessMeta {
     bytes: u64,
 }
 
+use crate::packet_capture::is_local;
 use crate::PacketInfo;
 
-pub fn start_monitoring(rx: Receiver<PacketInfo>) {
-    // TODO move these into a single protected struct and avoid unwraps!
-    let mut connections: Arc<RwLock<HashMap<(String, u16, String, u16), u32>>> = Default::default();
-    let mut processes: Arc<RwLock<HashMap<u32, ProcessMeta>>> = Default::default();
+#[derive(Debug, Clone, Default)]
+struct ConnectionTracker {
+    connections: HashMap<(String, u16, String, u16), ConnectionMeta>,
+    processes: HashMap<u32, ProcessMeta>,
+}
 
-    let connections1 = connections.clone();
-    let processes1 = processes.clone();
+impl ConnectionTracker {
+    fn add_packet(&mut self, msg: PacketInfo) {
+        let src = msg.src.parse::<IpAddr>().unwrap();
+        let dst = msg.dest.parse::<IpAddr>().unwrap();
+        let src_port = msg.src_port;
+        let dst_port = msg.dest_port;
 
-    thread::spawn(move || {
-        let connections = connections1;
-        for msg in rx.iter() {
-            // println!("Got {:?}", msg);
+        let keyed_tuple = unique_tuple((msg.src, msg.src_port, msg.dest, msg.dest_port));
+        
 
-            let tuple = unique_tuple((msg.src, msg.src_port, msg.dest, msg.dest_port));
-            let connections = connections.read().unwrap();
-            let v = connections.get(&tuple);
+        // Populate connections
+        let entry = self.connections.entry(keyed_tuple).or_insert_with(|| {
+            
+            let info = match is_local(src) {
+                true => SockInfo {
+                    proto: SockType::TCP, // FIXME
+                    local_addr: src,
+                    local_port: src_port,
+                    remote_addr: dst,
+                    remote_port: dst_port,
+                    pid: 99999,
+                },
+                false => SockInfo {
+                    proto: SockType::TCP, // FIXME
+                    local_addr: dst,
+                    local_port: dst_port,
+                    remote_addr: src,
+                    remote_port: src_port,
+                    pid: 99999,
+                },
+            };
+            ConnectionMeta::new_with_sock_info(info)
+        });
 
-            if v.is_some() {
-                let mut processes = processes1.write().unwrap();
-                let len = msg.len;
-                let pid = v.unwrap();
-                processes.entry(*pid).and_modify(|e| e.bytes += len as u64);
-            } else {
-                // println!("no");
-            }
+        if entry.info.local_addr == src {
+            entry.bytes_sent += msg.len as u64;
+        } else {
+            entry.bytes_recv += msg.len as u64;
         }
-    });
+    }
 
-    let top_processes = processes.clone();
+    fn top(&self) {
+        let connections: Vec<ConnectionMeta> = self.connections.values().cloned().collect();
 
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(3000));
+        let mut top: Vec<ProcessMeta> = self
+            .processes
+            .values()
+            .cloned()
+            .map(|proc| {
+                let mut size = 0;
+                for c in &connections {
+                    if c.info.pid == proc.pid {
+                        size += c.bytes_recv;
+                        size += c.bytes_sent;
+                    }
+                }
 
-        let mut top: Vec<ProcessMeta> = top_processes.read().unwrap().values().cloned().collect();
+                ProcessMeta {
+                    pid: proc.pid,
+                    name: proc.name,
+                    bytes: size,
+                }
+            })
+            .collect();
         top.sort_by(|a, b| b.bytes.cmp(&a.bytes));
         println!("Top");
-        top[..5].into_iter().for_each(|v| println!("{:?}", v));
-    });
+        println!("-----");
+        println!("Connection count:\t{}", connections.len());
+        top[..5]
+            .into_iter()
+            .for_each(|v| println!("{} {} {}", v.name, v.bytes, convert(v.bytes as f64)));
 
-    let connections2 = connections.clone();
-    thread::spawn(move || {
-        let connections = connections2;
-        loop {
-            println!("processes_and_sockets");
-            thread::sleep(Duration::from_millis(1500));
-            let start = Instant::now();
-            let sockets = processes_and_sockets();
-            let s: Vec<SockInfo> = sockets
-                .into_iter()
-                .filter(|sock| !processes.read().unwrap().contains_key(&sock.pid))
-                .collect();
+            // connections.iter().for_each(|c| {
+            //     println!("{:?}", c);
+            // })
+    }
 
-            s.iter().for_each(|sock| {
+    fn get_proccess(&mut self) {
+        let sockets = processes_and_sockets();
+        sockets.iter().for_each(|sock| {
+            self.processes.entry(sock.pid).or_insert_with(|| {
                 let process_path = match proc_pid::pidpath(sock.pid as i32) {
                     Ok(name) => name,
                     Err(_) => " - ".to_owned(),
@@ -250,15 +283,76 @@ pub fn start_monitoring(rx: Receiver<PacketInfo>) {
                     bytes: 0,
                 };
 
-                processes.write().unwrap().insert(sock.pid, meta);
+                meta
             });
 
-            s.iter().for_each(|s| {
-                connections
-                    .write()
-                    .unwrap()
-                    .insert(unique_tuple(s.four_tuple()), s.pid);
+            self.connections.entry(sock.four_tuple()).and_modify(|c| {
+                c.info.pid = sock.pid;
             });
+        });
+
+        //  make sure connection entry exists
+        // s.iter().for_each(|s| {
+        //     connections
+        //         .write()
+        //         .unwrap()
+        //         .insert(unique_tuple(s.four_tuple()), s.pid);
+        // });
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ConnectionMeta {
+    bytes_sent: u64,
+    bytes_recv: u64,
+    info: SockInfo,
+    // packet count
+    // current window -> speed
+}
+
+impl ConnectionMeta {
+    fn new_with_sock_info(info: SockInfo) -> Self {
+        ConnectionMeta {
+            bytes_sent: 0,
+            bytes_recv: 0,
+            info,
+        }
+    }
+}
+
+pub fn start_monitoring(rx: Receiver<PacketInfo>) {
+    // TODO move these into a single protected struct and avoid unwraps!
+    let connections: Arc<RwLock<ConnectionTracker>> = Default::default();
+
+    // let mut connections: Arc<RwLock<HashMap<(String, u16, String, u16), u32>>> = Default::default();
+    // let mut processes: Arc<RwLock<HashMap<u32, ProcessMeta>>> = Default::default();
+
+    let connections_on_packet = connections.clone();
+
+    thread::spawn(move || {
+        let connections = connections_on_packet;
+        for msg in rx.iter() {
+            // println!("Got {:?}", msg);
+
+            connections.write().unwrap().add_packet(msg);
+        }
+    });
+
+    let top_processes = connections.clone();
+
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(3000));
+
+        top_processes.read().unwrap().top();
+    });
+
+    let connections2 = connections.clone();
+    thread::spawn(move || -> ! {
+        let connections = connections2;
+        loop {
+            println!("processes_and_sockets");
+            thread::sleep(Duration::from_millis(2000));
+            connections.write().unwrap().get_proccess();
         }
     });
 }
