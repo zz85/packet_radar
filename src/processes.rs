@@ -117,7 +117,6 @@ pub enum SockType {
     TCP,
 }
 
-
 use std::fmt::{self, Display, Formatter};
 #[derive(Debug, Clone)]
 pub struct SockInfo {
@@ -199,11 +198,9 @@ impl ConnectionTracker {
         let dst_port = msg.dest_port;
 
         let keyed_tuple = unique_tuple((msg.src, msg.src_port, msg.dest, msg.dest_port));
-        
 
         // Populate connections
         let entry = self.connections.entry(keyed_tuple).or_insert_with(|| {
-            
             let info = match is_local(src) {
                 true => SockInfo {
                     proto: SockType::TCP, // FIXME
@@ -263,9 +260,9 @@ impl ConnectionTracker {
             .into_iter()
             .for_each(|v| println!("{} {} {}", v.name, v.bytes, convert(v.bytes as f64)));
 
-            // connections.iter().for_each(|c| {
-            //     println!("{:?}", c);
-            // })
+        // connections.iter().for_each(|c| {
+        //     println!("{:?}", c);
+        // })
     }
 
     fn get_proccess(&mut self) {

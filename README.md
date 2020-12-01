@@ -75,8 +75,7 @@ open `html/packet_viz.html` in your browser
 - [ ] TLS Parsing
 - [ ] Quic Packet Parsing
 - [ ] Sankey diagrams
-- [ ] Netstat / Socket listings
-- [ ] Break connections by processes
+- [x] Netstat / Socket listings
+- [x] Break connections by processes - Top process bandwidth
 - [ ] What's my ip whatsmyip
 - [ ] ASN breakdown
-
