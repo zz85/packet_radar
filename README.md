@@ -79,3 +79,8 @@ open `html/packet_viz.html` in your browser
 - [x] Break connections by processes - Top process bandwidth
 - [ ] What's my ip whatsmyip
 - [ ] ASN breakdown
+
+Organize the modules
+Integrate GeoIP / ASN
+Socket -> Process
+TLS Stats
