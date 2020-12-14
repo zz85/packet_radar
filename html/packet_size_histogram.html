@@ -1,0 +1,234 @@
+<html>
+<head>
+    <meta charset="utf-8" /> 
+</head>
+<body>
+    <style>
+        body {
+            font-family: monospace;
+        }
+
+        #holder {
+            width: 100%;
+            height: 100%;
+        }
+
+        .item {
+            width: 100%;
+            height: 20px;
+        }
+    </style>
+
+    <script src="js/packet_server.js"></script>
+    <script src="js/stats.js"></script>
+    <script src="js/links.js"></script>
+
+    <div id="legend">
+        Packet sizes:
+    </div>
+
+    <pre id="out"></pre>
+
+    <script>
+        // ascii histograms - adapted from https://github.com/zz85/ascii-graphs.js
+
+// generates a standard theme formatter
+function make_standard_theme(chars, opts) {
+    var block_formatter = _ => chars[0];
+
+    var last_formatter = (fraction) => {
+        if (fraction == 0) return '';
+        var index = chars.length - (fraction * chars.length | 0) - 1;
+        return chars[index];
+    };
+
+    var chart_width = 4;
+    var divider = '|';
+
+    return Object.assign({
+        block_formatter,
+        last_formatter,
+        chart_width,
+        divider,
+    }, opts);
+}
+
+function make_basic_theme(head, tail, opts) {
+    var block_formatter = _ => head;
+
+    var last_formatter = (fraction) => {
+        return tail;
+    };
+
+    var chart_width = 20;
+    var divider = '|';
+
+    return Object.assign({
+        block_formatter,
+        last_formatter,
+        chart_width,
+        divider,
+    }, opts);
+}
+
+var standard_theme = make_standard_theme("█▉▊▋▌▍▎▏".split('')); // unicode 8 divisions per character block
+// tribute to jim roskind - this is what you see when you visit chrome://histograms/
+var jim_theme = make_basic_theme('-', 'o', { chart_width: 60, divider: '' });
+var spark_line_chars = "█▇▆▅▄▃▁".split('');
+
+var Themes = {
+    standard: standard_theme,
+    jim: jim_theme,
+    equals: make_basic_theme('=', ']', { chart_width: 30 }),
+    stars: make_basic_theme('*', ' '),
+    pipes: make_standard_theme(['|'], { chart_width: 60 }),
+    sparks: make_standard_theme(spark_line_chars, { chart_width: 1 }),
+    bitly: make_basic_theme('∎', ' ', { chart_width: 60 }), /* bit.ly data_hacks like */
+
+};
+
+var times = (x) => new Array(x).fill(0);;
+function fit(v, w) {
+    w = w || 10;
+    w = Math.max(w, v.length);
+    return Array(w - v.length + 1).join(' ') + v;
+}
+
+/* Histogram */
+
+// data is of array [0, 1, ..., n]
+// or in future [{ value, label }]
+function histogram_format(data, theme, options) {
+    if (theme && theme.length) {
+        theme = Themes[theme];
+    } else {
+        options = theme;
+        theme = null
+    }
+
+    options = Object.assign({}, theme || standard_theme, options)
+
+    var values = data;
+    if (values[0].label) values = data.map(d => d.value);
+
+
+    var min = options.min || Math.min(...values, 0);
+    var max = options.max || Math.max(...values);
+    // normalize min..max
+    max -= min;
+    values = values.map(v => v - min);
+    var sum = values.reduce((x, y) => x + y, 0);
+
+    var {
+        block_formatter,
+        last_formatter,
+        chart_width,
+        divider,
+    } = options;
+
+    var value_mapper = (v, i) => {
+        var chars = v / max * chart_width;
+        var blocks = times(chars | 0).map(block_formatter);
+        var remainder = (chars % 1);
+        var tail = last_formatter(remainder);
+        var bar = blocks.join('') + tail;
+        var remains = chart_width - bar.length + 1;
+
+        var percentage = (v / sum * 100).toFixed(2) + '%';
+        var value = fit(v.toFixed(0), 7)
+        var label = fit(`${data[i].label}` + '', 20) + divider;
+        
+        var str = `${label} ${value} ${divider}${bar}${Array(remains + 1).join(' ')}${divider} ${percentage}`;
+
+        return str;
+    };
+
+    return values.map(value_mapper);
+}
+
+/* sparkline */
+function spark_line(data, options) {
+    options = options || {};
+    var values = data;
+    var min = options.min || Math.min(...values);
+    var max = options.max || Math.max(...values);
+    max -= min;
+
+    values = values.map(v => v - min);
+    var sum = values.reduce((x, y) => x + y, 0);
+    var avg = sum / values.length;
+
+    var {
+        block_formatter,
+        last_formatter,
+        chart_width,
+        divider,
+    } = options;
+
+    var value_mapper = (v, i) => {
+        // currently support 1 row sparkline
+        var fraction = v / max;
+        fraction = Math.max(Math.min(1, fraction), 0); // clamp 0..1
+
+        // if (v === 0) return ' ';
+
+        var index = spark_line_chars.length - (fraction * spark_line_chars.length | 0) - 1;
+
+        return spark_line_chars[index];
+    };
+
+    var chart = values.map(value_mapper).join('');
+    var stats = `Min: ${min.toFixed(2)} Avg: ${avg.toFixed(2)} Max: ${(max + min).toFixed(2)}`
+
+    return `|${chart}| ${stats}`;
+}
+    </script>
+
+    <script>
+
+        var bins = {};
+        var UNITS = 100;
+
+        connect_packet_server(data => {
+            const { src, dest, len } = data;
+
+            var bin = len / UNITS | 0;
+            if (!bins[bin]) {
+                bins[bin] = { label: `${bin * UNITS} - ${(bin + 1) * UNITS} bytes`, value: 0 };
+            }
+
+            bins[bin].value++;
+        });
+
+        setInterval(() => {
+            var data = Object.keys(bins).map(k => bins[k]);
+
+            var ascii = histogram_format(data, 'jim');
+            out.innerHTML = ascii.join('\n');
+
+        }, 1000);
+
+    </script>
+
+
+<!--
+    Packet sizes:
+       0 - 100 bytes     642 -------------------------------------------------o            36.39%
+     100 - 200 bytes      68 -----o                                                        3.85%
+     200 - 300 bytes      53 ----o                                                         3.00%
+     300 - 400 bytes      71 -----o                                                        4.02%
+     400 - 500 bytes      12 o                                                             0.68%
+     500 - 600 bytes      32 --o                                                           1.81%
+     600 - 700 bytes      24 -o                                                            1.36%
+     700 - 800 bytes       7 o                                                             0.40%
+     800 - 900 bytes      10 o                                                             0.57%
+    900 - 1000 bytes       6 o                                                             0.34%
+   1000 - 1100 bytes       9 o                                                             0.51%
+   1100 - 1200 bytes       2 o                                                             0.11%
+   1200 - 1300 bytes       8 o                                                             0.45%
+   1300 - 1400 bytes      44 ---o                                                          2.49%
+   1400 - 1500 bytes     776 ------------------------------------------------------------o 43.99%
+-->
+</body>
+
+</html>
