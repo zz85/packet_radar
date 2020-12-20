@@ -19,6 +19,8 @@ lazy_static! {
     pub static ref TCP_STATS: RwLock<TcpStats> = Default::default();
 }
 
+const TLS_STATS: bool = false;
+
 #[derive(Debug, Copy, Clone)]
 pub struct ConnStat {
     client_tls_version: u16,
@@ -63,6 +65,10 @@ impl TcpStats {
     }
 
     pub fn count(&mut self) {
+        if !TLS_STATS {
+            return;
+        }
+
         let map = &self.conn_map;
         let len = map.keys().len();
 

@@ -19,8 +19,8 @@ use std::{
 };
 
 use enum_primitive_derive::Primitive;
+use hdrhistogram::Histogram;
 use num_traits::{FromPrimitive, ToPrimitive};
-
 use pretty_bytes::converter::convert;
 
 /**
@@ -184,10 +184,67 @@ struct ProcessMeta {
 use crate::packet_capture::is_local;
 use crate::PacketInfo;
 
+#[derive(Debug, Clone)]
+struct Meter {
+    histo: Histogram<u64>,
+    rate: Histogram<u64>,
+    last_tick: Instant,
+    accum: u64,
+    current: u64,
+}
+
+impl Meter {
+    fn add(&mut self, value: u64) {
+        self.histo += value;
+        self.accum += value;
+        self.current += value;
+
+        if self.last_tick.elapsed() >= Duration::from_millis(1000) {
+            println!("Bytes {}", self.current);
+            self.rate += self.current;
+            self.current = 0;
+
+            self.last_tick = Instant::now();
+        }
+    }
+
+    fn stats(&self) {
+        println!(
+            "Size: min avg max {} {} {} Count: {}",
+            self.histo.min(),
+            self.histo.value_at_quantile(0.5),
+            self.histo.max(),
+            self.histo.len()
+        );
+        println!(
+            "Rate: min avg max {} {} {} Count: {}",
+            self.rate.min(),
+            self.rate.value_at_quantile(0.5),
+            self.rate.max(),
+            self.rate.len()
+        );
+    }
+}
+
+impl Default for Meter {
+    fn default() -> Self {
+        Self {
+            histo: Histogram::<u64>::new(3).unwrap(),
+            rate: Histogram::<u64>::new(3).unwrap(),
+            last_tick: Instant::now(),
+            accum: 0,
+            current: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct ConnectionTracker {
     connections: HashMap<(String, u16, String, u16), ConnectionMeta>,
     processes: HashMap<u32, ProcessMeta>,
+
+    out_bytes: Meter,
+    in_bytes: Meter,
 }
 
 impl ConnectionTracker {
@@ -222,10 +279,13 @@ impl ConnectionTracker {
             ConnectionMeta::new_with_sock_info(info)
         });
 
+        let msg_len = msg.len as u64;
         if entry.info.local_addr == src {
-            entry.bytes_sent += msg.len as u64;
+            entry.bytes_sent += msg_len;
+            self.out_bytes.add(msg_len);
         } else {
-            entry.bytes_recv += msg.len as u64;
+            entry.bytes_recv += msg_len;
+            self.in_bytes.add(msg_len);
         }
     }
 
@@ -263,6 +323,11 @@ impl ConnectionTracker {
         // connections.iter().for_each(|c| {
         //     println!("{:?}", c);
         // })
+
+        println!("Out");
+        self.out_bytes.stats();
+        println!("In");
+        self.in_bytes.stats();
     }
 
     fn get_proccess(&mut self) {
