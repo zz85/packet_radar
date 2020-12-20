@@ -23,6 +23,8 @@ use std::net::IpAddr;
 
 use crossbeam::channel::Sender;
 
+use crate::quic;
+
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
 
@@ -193,12 +195,25 @@ fn handle_udp_packet(
         // start parsing
         let payload = udp.payload();
 
+        // intercept DNS calls
         if udp.get_source() == 53 {
             // println!("Payload {:?}", payload);
             parse_dns(payload).map(|v| {
                 // println!("DNS {}\n", v);
                 v.parse_body();
             });
+        }
+
+        if quic::dissect(payload) {
+            println!(
+                "[{}]: UDP Packet: {}:{} > {}:{}; length: {}",
+                interface_name,
+                source,
+                udp.get_source(),
+                destination,
+                udp.get_destination(),
+                udp.get_length()
+            );
         }
 
     // println!("UDP Payload {:?}", udp.payload());

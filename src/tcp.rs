@@ -20,6 +20,7 @@ lazy_static! {
 }
 
 const TLS_STATS: bool = false;
+const JA3: bool = false;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ConnStat {
@@ -181,9 +182,11 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
                                     }
                                 }
 
-                                let ja3 = build_ja3_fingerprint(&client_hello, &extensions);
-                                let digest = md5::compute(&ja3);
-                                println!("JA3: {} --> {:x}", ja3, digest);
+                                if JA3 {
+                                    let ja3 = build_ja3_fingerprint(&client_hello, &extensions);
+                                    let digest = md5::compute(&ja3);
+                                    println!("JA3: {} --> {:x}", ja3, digest);
+                                }
                             }
                         }
 

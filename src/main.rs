@@ -41,6 +41,8 @@ use geoip::{asn_lookup, city_lookup, test_lookups};
 mod packet_capture;
 use packet_capture::cap;
 
+mod quic;
+
 use std::convert::TryFrom;
 
 /**

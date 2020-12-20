@@ -72,6 +72,7 @@ open `html/packet_viz.html` in your browser
 - [ ] Terminal interface
 - [ ] Visual traceroute
 - [x] Geoip
+- [ ] SSL Key log decoding
 - [ ] TLS Parsing
 - [ ] Quic Packet Parsing
 - [ ] Sankey diagrams
