@@ -11,20 +11,13 @@ use pnet::packet::udp::UdpPacket;
 
 use pnet::packet::*;
 
+use super::PacketInfo;
 use super::{parse_dns, reverse_lookup};
-use super::{ClientRequest, PacketInfo};
-
-use dipstick::{stats_all, AtomicBucket, InputScope, Output, ScheduleFlush, Stream};
-use std::io;
 
 use super::parse_tcp_payload;
 use super::{handle_echo_reply, handle_time_exceeded};
 
 use std::convert::TryFrom;
-
-use websocket::message::OwnedMessage;
-use websocket::sender::Writer;
-use websocket::sync::Server;
 
 use std::net::IpAddr;
 
@@ -32,9 +25,6 @@ use crossbeam::channel::Sender;
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
-const STATS: bool = false;
-
-const PCAP: bool = false;
 
 pub fn is_local(ip: IpAddr) -> bool {
     let interfaces = pnet::datalink::interfaces();
@@ -92,73 +82,19 @@ pub fn cap(tx: Sender<PacketInfo>) {
 
     let mut iter = ether_rx;
 
-    if !PCAP {
-        loop {
-            match iter.next() {
-                Ok(packet) => {
-                    let ether = EthernetPacket::new(packet).unwrap();
-                    handle_ethernet_packet(&ether, &tx);
-                }
-                Err(e) => panic!("packetdump: unable to receive packet: {}", e),
+    // process packets
+    loop {
+        match iter.next() {
+            Ok(packet) => {
+                let ether = EthernetPacket::new(packet).unwrap();
+                handle_ethernet_packet(&ether, &tx);
             }
+            Err(e) => panic!("packetdump: unable to receive packet: {}", e),
         }
     }
-
-    // set up metrics
-    let bucket = AtomicBucket::new();
-
-    if STATS {
-        bucket.drain(Stream::to_stdout());
-        bucket.flush_every(std::time::Duration::from_secs(1));
-    }
-
-    let mut i = 0;
-
-    let bytes = bucket.counter("bytes: ");
-    let packets = bucket.marker("packets: ");
 
     // traceroute::test_ping();
     // traceroute::test_traceroute();
-
-    if PCAP {
-        loop {
-            i += 1;
-            match cap.next() {
-                Ok(packet) => {
-                    bytes.count(packet.len());
-                    packets.mark();
-                    // println!("received packet! {:?}", packet);
-                    let header = packet.header;
-                    if header.caplen != header.len {
-                        println!(
-                            "Warning bad packet.. len {}: caplen: {}, header len: {}",
-                            packet.len(),
-                            header.caplen,
-                            header.len
-                        );
-                    }
-
-                    // .ts
-
-                    let ether = EthernetPacket::new(&packet).unwrap();
-                    handle_ethernet_packet(&ether, &tx);
-                }
-                Err(_) => {
-                    // println!("Error! {:?}", e);
-                }
-            }
-
-            let stats = cap.stats().unwrap();
-            if i % 10000 == 0 {
-                println!(
-                    "Stats: Received: {}, Dropped: {}, if_dropped: {}",
-                    stats.received, stats.dropped, stats.if_dropped
-                );
-                bucket.stats(stats_all);
-                bucket.flush_to(&Stream::to_stdout().new_scope()).unwrap();
-            }
-        }
-    }
 }
 
 fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<PacketInfo>) {

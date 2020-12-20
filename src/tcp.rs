@@ -63,7 +63,7 @@ impl TcpStats {
     }
 
     pub fn count(&mut self) {
-        let map = self.conn_map.clone();
+        let map = &self.conn_map;
         let len = map.keys().len();
 
         let mut client_12_count = 0;
@@ -97,8 +97,8 @@ impl TcpStats {
             println!("TLS Total: {}", len);
             println!("Client TLS 1.2: {}", client_12_count);
             println!("Client TLS 1.3: {}", client_13_count);
-            println!("server TLS 1.2: {}", server_12_count);
-            println!("server TLS 1.3: {}", server_13_count);
+            println!("Server TLS 1.2: {}", server_12_count);
+            println!("Server TLS 1.3: {}", server_13_count);
 
             if server_12_count > 0 {
                 println!("Avg RTT 1.2: {:?}", total_12_duration / server_12_count)

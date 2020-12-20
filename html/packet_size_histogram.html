@@ -185,9 +185,8 @@ function spark_line(data, options) {
     </script>
 
     <script>
-
         var bins = {};
-        var UNITS = 100;
+        var UNITS = 10;
 
         connect_packet_server(data => {
             const { src, dest, len } = data;
