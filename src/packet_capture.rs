@@ -206,7 +206,7 @@ fn handle_udp_packet(
 
         if quic::dissect(payload) {
             println!(
-                "[{}]: UDP Packet: {}:{} > {}:{}; length: {}",
+                "[{}]: QUIC Packet: {}:{} > {}:{}; length: {}",
                 interface_name,
                 source,
                 udp.get_source(),
@@ -214,6 +214,13 @@ fn handle_udp_packet(
                 udp.get_destination(),
                 udp.get_length()
             );
+
+            // TODO observe QUIC connections
+            // number of connections
+            // most popular endpoints
+            // bitspin RTT
+            // durations of connection
+            // connection migrations
         }
 
     // println!("UDP Payload {:?}", udp.payload());
