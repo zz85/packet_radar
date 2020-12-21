@@ -4,8 +4,18 @@
 // find_or_create_conversation
 
 use bytes::Buf;
-use hex;
+use hex_literal::hex;
+use ring::hkdf;
 use std::io::Cursor;
+
+// since draft 29
+pub const INITIAL_SALT_VALUE: [u8; 20] = hex!("afbfec289993d24c9e9786f19c6111e04390a899");
+pub const INITIAL_CLIENT_LABEL: [u8; 9] = *b"client in";
+pub const INITIAL_SERVER_LABEL: [u8; 9] = *b"server in";
+
+lazy_static::lazy_static! {
+    static ref INITIAL_SALT: hkdf::Salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &INITIAL_SALT_VALUE);
+}
 
 // https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#sample-varint
 fn read_var_int<B: Buf>(buf: &mut B) -> u64 {
@@ -22,6 +32,25 @@ fn read_var_int<B: Buf>(buf: &mut B) -> u64 {
     v
 }
 
+/* https://quicwg.org/base-drafts/draft-ietf-quic-tls.html#name-initial-secrets */
+// create initial decoders
+fn calc_initial_secrets(connection_id: &[u8]) {
+    let initial_secrets = INITIAL_SALT.extract(connection_id);
+
+    let client_initial_secrets = initial_secrets
+        .expand(&[&INITIAL_CLIENT_LABEL], INITIAL_SALT.algorithm())
+        .expect("calc secrets");
+
+    //     client_initial_secret = HKDF-Expand-Label(initial_secret,
+    //         "client in", "",
+    //         Hash.length)
+    // server_initial_secret = HKDF-Expand-Label(initial_secret,
+    //         "server in", "",
+    //         Hash.length)
+    /* Packet numbers are protected with AES128-CTR,
+     * initial packets are protected with AEAD_AES_128_GCM. */
+}
+
 pub fn dissect(packet: &[u8]) -> bool {
     let mut view = Cursor::new(packet);
 
@@ -32,6 +61,7 @@ pub fn dissect(packet: &[u8]) -> bool {
 
     if long_header && fixed {
         let packet_type = (first_byte >> 4) & 0x3;
+        let packet_number_len = (first_byte & 0x3) + 1;
 
         let packet_type_str = get_long_packet_type_str(packet_type);
 
@@ -52,21 +82,27 @@ pub fn dissect(packet: &[u8]) -> bool {
             }
 
             let length = read_var_int(&mut view);
-            println!("QUIC packet length {}", length);
+
+            // read packet number
+            let packet_number = view.get_uint(packet_number_len as usize);
+            // rest of payload
+
+            // remove header protection
+
+            // payload - client hello
+
+            println!(
+                "QUIC packet length: {}, PN len: {}",
+                length, packet_number_len
+            );
+            // https://quicwg.org/base-drafts/draft-ietf-quic-tls.html#name-header-protection-applicati
+            // https://github.com/musec/rusty-shark
+            // https://github.com/wireshark/wireshark/blob/master/epan/dissectors/packet-quic.c
         }
 
-        // length
-        // packet number
-        // payload - client hello
-
         println!(
-            "QUIC Long header: {} {} dcid: {} scid: {} |{},{}",
-            packet_type_str,
-            version_str,
-            hex::encode(dcid_buf),
-            hex::encode(scid_buf),
-            dcid_len,
-            scid_len
+            "QUIC Long header: {} {} dcid: {:x} scid: {:x} |{},{}",
+            packet_type_str, version_str, dcid_buf, scid_buf, dcid_len, scid_len
         );
 
         return true;
