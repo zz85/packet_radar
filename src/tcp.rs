@@ -12,6 +12,14 @@ const TLS_STATS: bool = false;
 
 use super::tls::{process_client_hello, process_server_hello};
 
+
+// IP Fragmentation
+// https://en.wikipedia.org/wiki/IP_fragmentation
+// https://tools.ietf.org/html/rfc791
+// https://tools.ietf.org/html/rfc815
+// https://packetpushers.net/ip-fragmentation-in-detail/
+
+
 #[derive(Debug, Copy, Clone)]
 pub struct ConnStat {
     client_tls_version: u16,

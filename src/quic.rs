@@ -110,8 +110,8 @@ pub fn dissect(packet: &[u8]) -> bool {
         }
 
         println!(
-            "QUIC Long header: {} {} dcid: {:x} scid: {:x} |{},{}",
-            packet_type_str, version_str, dcid_buf, scid_buf, dcid_len, scid_len
+            "QUIC Long header: {} quic-{} dcid: {:x} scid: {:x}",
+            packet_type_str, version_str, dcid_buf, scid_buf
         );
 
         return true;
@@ -133,7 +133,6 @@ fn get_version_str(version: u32) -> &'static str {
     match version {
         0x00000000 => "Version Negotiation",
         0x00000001 => "QUICv1",
-
         0x51303434 => "Google Q044",
         0x51303530 => "Google Q050",
         0x54303530 => "Google T050",
@@ -175,7 +174,6 @@ fn get_version_str(version: u32) -> &'static str {
         0xff020000 => "v2-draft-00",
         0x709A50C4 => "v2-draft-01",
         0x6b3343cf => "v2",
-
         version if (version & 0x0F0F0F0F) == 0x0a0a0a0a => "version negotiation",
         _ => "unknown version",
     }
