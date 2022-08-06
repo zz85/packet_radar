@@ -5,7 +5,7 @@ authors = ["Joshua Koo <zz85nus@gmail.com>", "Yang Bin Kwok <yangbin@fragnetics.
 edition = "2018"
 
 [dependencies]
-websocket = "0.22"
+websocket = "0.26"
 tokio="*"
 futures="*"
 pcap="*"
