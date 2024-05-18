@@ -21,18 +21,31 @@ pub fn parse_dns(payload: &[u8]) -> Option<DnsPacket<&[u8]>> {
     DnsPacket::parse(payload)
 }
 
-pub fn reverse_lookup(ip: String) -> String {
-    match CACHED_IPS_TO_DOMAIN.read().unwrap().get(ip.as_str()) {
+pub fn reverse_lookup(ip: &String) -> Option<String> {
+    let hostname = match CACHED_IPS_TO_DOMAIN.read().unwrap().get(ip) {
         Some(value) => {
             println!("Using DNS cache domain {} -> {}", ip, value);
             value.clone()
         }
-        None => sys_lookup(ip),
-    }
+        None => sys_lookup(ip)
+            .map_err(|e| {
+                println!("sys_lookup failed: {e}");
+                e
+            })
+            .ok()?,
+    };
+
+    Some(hostname)
 }
 
-fn sys_lookup(ip: String) -> String {
-    lookup_addr(&ip.parse::<IpAddr>().unwrap()).unwrap()
+fn sys_lookup(ip: &String) -> Result<String, String> {
+    let ip = ip
+        .parse::<IpAddr>()
+        .map_err(|e| format!("Cannot parse {e} {ip}"))?;
+
+    let dns = lookup_addr(&ip).map_err(|e| format!("Cannot look up {e} {ip}"))?;
+
+    Ok(dns)
 }
 
 #[derive(FromBytes, AsBytes, Unaligned)]

@@ -70,7 +70,7 @@ fn main() {
     // runs packet capture in its thread
     thread::spawn(move || cap(tx));
 
-    processes::start_monitoring(rx);
+    // processes::start_monitoring(rx);
 
     handle_clients(server, clients);
 }

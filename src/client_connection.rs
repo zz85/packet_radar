@@ -56,7 +56,7 @@ pub fn handle_clients(
                             "lookup" => {
                                 // handle look up address
                                 let ip = data.value;
-                                let hostname = reverse_lookup(ip.clone());
+                                let hostname = reverse_lookup(&ip).unwrap_or(format!("{ip}"));
                                 // println!("Name look up from: {} to {}", destination, hostname);
 
                                 let p = json!({

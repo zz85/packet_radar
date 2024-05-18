@@ -8,6 +8,7 @@ use hex_literal::hex;
 use ring::hkdf;
 use std::io::Cursor;
 
+// should probably utilize this https://github.com/zz85/quic-initial-degreaser/blob/main/src/quic_initial_degreaser.rs
 // since draft 29
 pub const INITIAL_SALT_VALUE: [u8; 20] = hex!("afbfec289993d24c9e9786f19c6111e04390a899");
 pub const INITIAL_CLIENT_LABEL: [u8; 9] = *b"client in";
@@ -59,6 +60,7 @@ pub fn dissect(packet: &[u8]) -> bool {
     let long_header = first_byte & 0b10000000 > 0;
     let fixed = first_byte & 0x40 > 0;
 
+    // https://datatracker.ietf.org/doc/html/rfc9000#name-long-header-packets
     if long_header && fixed {
         let packet_type = (first_byte >> 4) & 0x3;
         let packet_number_len = (first_byte & 0x3) + 1;
@@ -68,11 +70,18 @@ pub fn dissect(packet: &[u8]) -> bool {
         let version = view.get_u32();
 
         let version_str = get_version_str(version);
+        println!("{packet_type_str} {version_str}");
 
         let dcid_len = view.get_u8();
+        if dcid_len > 20 {
+            return false;
+        }
         let dcid_buf = view.copy_to_bytes(dcid_len as usize);
 
         let scid_len = view.get_u8();
+        if scid_len > 20 {
+            return false;
+        }
         let scid_buf = view.copy_to_bytes(scid_len as usize);
 
         if packet_type == 0 {
@@ -123,6 +132,8 @@ fn get_long_packet_type_str(long_type: u8) -> &'static str {
 fn get_version_str(version: u32) -> &'static str {
     match version {
         0x00000000 => "Version Negotiation",
+        0x00000001 => "QUICv1",
+
         0x51303434 => "Google Q044",
         0x51303530 => "Google Q050",
         0x54303530 => "Google T050",
@@ -159,6 +170,12 @@ fn get_version_str(version: u32) -> &'static str {
         0xff00001e => "draft-30",
         0xff00001f => "draft-31",
         0xff000020 => "draft-32",
+        0xff000021 => "draft-33",
+        0xff000022 => "draft-34",
+        0xff020000 => "v2-draft-00",
+        0x709A50C4 => "v2-draft-01",
+        0x6b3343cf => "v2",
+
         version if (version & 0x0F0F0F0F) == 0x0a0a0a0a => "version negotiation",
         _ => "unknown version",
     }
