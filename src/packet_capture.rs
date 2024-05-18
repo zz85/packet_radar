@@ -43,7 +43,7 @@ pub fn cap(tx: Sender<PacketInfo>) {
     println!("Running pcap...");
     println!("Devices {:?}", Device::list());
 
-    let device = Device::lookup().unwrap();
+    let device = Device::lookup().unwrap().unwrap();
     println!("Default device {:?}", device);
 
     let name = device.name.as_str();

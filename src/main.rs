@@ -1,4 +1,3 @@
-#![feature(drain_filter)]
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::sync::Server;
@@ -68,6 +67,7 @@ fn main() {
 
     // traceroute::set_callback(tx.clone());
 
+    // runs packet capture in its thread
     thread::spawn(move || cap(tx));
 
     processes::start_monitoring(rx);
@@ -78,11 +78,13 @@ fn main() {
 fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
     thread::spawn(move || {
         for packet_info in rx.iter() {
-            clients.write().unwrap().drain_filter(|c| {
+            let mut clients = clients.write().unwrap();
+
+            clients.retain_mut(|c| {
                 let payload = serde_json::to_string(&packet_info).unwrap();
                 let message = OwnedMessage::Text(payload);
 
-                c.send_message(&message).is_err()
+                c.send_message(&message).is_ok()
             });
         }
     });

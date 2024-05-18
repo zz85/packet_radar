@@ -127,10 +127,9 @@ pub fn handle_clients(
 fn broadcast(clients: Arc<RwLock<Vec<Writer<TcpStream>>>>, text: String) {
     println!("Broadcasting... {}", text);
     let message = OwnedMessage::Text(text);
-    clients
-        .write()
-        .unwrap()
-        .drain_filter(|c| c.send_message(&message).is_err());
+    let mut clients = clients.write().unwrap();
+
+    clients.retain_mut(|c| c.send_message(&message).is_ok());
 }
 
 fn get_geo_ip(ip: String) -> Option<String> {

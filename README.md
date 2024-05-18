@@ -23,8 +23,6 @@ Server uses nightly rust, UI is done with Canvas + JS.
 ```
 ### If you need to install rust
 curl https://sh.rustup.rs -sSf | sh
-rustup install nightly
-rustup default nightly
 
 ### Compile and run
 cargo run
