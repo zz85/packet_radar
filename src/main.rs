@@ -42,6 +42,8 @@ use packet_capture::cap;
 
 mod quic;
 
+mod tls;
+
 use std::convert::TryFrom;
 
 /**

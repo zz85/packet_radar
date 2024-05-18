@@ -1,26 +1,16 @@
-use std::cmp;
 use std::collections::HashMap;
 use std::sync::RwLock;
-use tls_parser::{
-    parse_tls_encrypted, parse_tls_extensions, parse_tls_plaintext, TlsExtension, TlsMessage,
-    TlsMessageHandshake, TlsVersion,
-};
-
-use itertools::Itertools;
+use tls_parser::{parse_tls_plaintext, TlsMessage, TlsMessageHandshake, TlsRecordType, TlsVersion};
 
 use std::time::{Duration, Instant};
-
-use md5;
-
-use tls_parser::tls::*;
-use tls_parser::tls_extensions::*;
 
 lazy_static! {
     pub static ref TCP_STATS: RwLock<TcpStats> = Default::default();
 }
 
 const TLS_STATS: bool = false;
-const JA3: bool = false;
+
+use super::tls::{process_client_hello, process_server_hello};
 
 #[derive(Debug, Copy, Clone)]
 pub struct ConnStat {
@@ -117,7 +107,7 @@ impl TcpStats {
     }
 }
 
-pub fn parse_tcp_payload(packet: &[u8], key: &str) {
+pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
     // if packet.len() > 4 {
     //     if packet[0] == 0x17 {
     //         return;
@@ -131,232 +121,80 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) {
 
     // TODO skip to the end of TCP header
 
-    // if let Ok(encrypted) = parse_tls_encrypted(&packet) {
-    //     let (_, msg) = encrypted;
-    //     match (msg.hdr.record_type) {
-    //     }
-    // }
+    let v = parse_tls_plaintext(&packet)
+        .map_err(|e| {
+            // cannot parse
+            e
+        })
+        .ok()?;
 
-    let r = parse_tls_plaintext(&packet);
-    match r {
-        Ok(v) => {
-            // println!("TLS parsed {:?}", v);
-            let (_, plain_text) = v;
-            for m in plain_text.msg {
-                // println!("msg {:?}", m);
-                // Handshake(ClientKeyExchange)
-                // Alert(TlsMessageAlert
-                // Handshake(ClientHello(TlsClientHelloContents
+    // println!("TLS parsed {:?}", v);
+    let (_, plain_text) = v;
+    for m in plain_text.msg {
+        // println!("msg {:?}", m);
+        // Handshake(ClientKeyExchange)
+        // Alert(TlsMessageAlert
+        // Handshake(ClientHello(TlsClientHelloContents
 
-                match m {
-                    TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) => {
-                        // println!("Client Hello client_hello {:?}", client_hello);
-                        // ciphers
-                        // println!("Client Hello Version {}", client_hello.version);
+        match m {
+            TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) => {
+                let highest = process_client_hello(client_hello);
 
-                        let mut highest = client_hello.version.0;
+                // get connection
+                let mut tcp_stats = TCP_STATS.write().unwrap();
+                let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+                conn.client_tls_version = highest;
+                conn.client_time = Instant::now();
 
-                        if let Some(v) = client_hello.ext {
-                            if let Ok((_, ref extensions)) = parse_tls_extensions(v) {
-                                // println!("Client Hello Extensions {:?}", extensions);
-                                // TlsExtension::EllipticCurves
-                                // TlsExtension::ALPN
-                                // TlsExtension::SignatureAlgorithms
-                                // TlsExtension::KeyShare
-                                // TlsExtension::PreSharedKey
+                println!("Client Hello Version {} - {}", key, TlsVersion(highest));
 
-                                for ext in extensions {
-                                    match ext {
-                                        TlsExtension::SNI(sni) => {
-                                            for (_, b) in sni {
-                                                println!(
-                                                    "Sni: {}",
-                                                    std::str::from_utf8(b).unwrap_or("")
-                                                );
-                                            }
-                                        }
-                                        TlsExtension::SupportedVersions(sv) => {
-                                            highest = highest_version(highest, sv);
-                                        }
-                                        _ => {}
-                                    }
-                                }
+                tcp_stats.count();
+            }
+            TlsMessage::Handshake(TlsMessageHandshake::ServerHello(server_hello)) => {
+                let highest = process_server_hello(server_hello);
 
-                                if JA3 {
-                                    let ja3 = build_ja3_fingerprint(&client_hello, &extensions);
-                                    let digest = md5::compute(&ja3);
-                                    println!("JA3: {} --> {:x}", ja3, digest);
-                                }
-                            }
-                        }
+                // get connection
+                let mut tcp_stats = TCP_STATS.write().unwrap();
+                let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+                conn.server_tls_version = highest;
+                conn.server_time = Instant::now();
+                println!(
+                    "Server Hello Supported Version {} - {}",
+                    key,
+                    TlsVersion(highest)
+                );
+                println!("{:?}", conn.server_time.duration_since(conn.client_time));
 
-                        // get connection
-                        let mut tcp_stats = TCP_STATS.write().unwrap();
-                        let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
-                        conn.client_tls_version = highest;
-                        conn.client_time = Instant::now();
-
-                        println!("Client Hello Version {} - {}", key, TlsVersion(highest));
-
-                        tcp_stats.count();
-                    }
-                    TlsMessage::Handshake(TlsMessageHandshake::ServerHello(server_hello)) => {
-                        // println!("Server Hello server_hello {:?}", server_hello);
-
-                        let mut highest = server_hello.version.0;
-                        if let Some(v) = server_hello.ext {
-                            if let Ok((_, ref extensions)) = parse_tls_extensions(v) {
-                                // println!("Server Hello Extensions {:?}", extensions);
-                                // TlsExtension::KeyShare count
-                                // Hello Retry stats
-                                // CipherSuit, ALPN
-                                // OCSP, Key Exchange
-
-                                for ext in extensions {
-                                    match ext {
-                                        TlsExtension::SupportedVersions(sv) => {
-                                            highest = highest_version(highest, sv);
-                                            if highest < TlsVersion::Tls13.0 {
-                                                println!(
-                                                    "************** DOWNGRADE ************???"
-                                                );
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-
-                        // get connection
-                        let mut tcp_stats = TCP_STATS.write().unwrap();
-                        let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
-                        conn.server_tls_version = highest;
-                        conn.server_time = Instant::now();
-                        println!(
-                            "Server Hello Supported Version {} - {}",
-                            key,
-                            TlsVersion(highest)
-                        );
-                        println!("{:?}", conn.server_time.duration_since(conn.client_time));
-
-                        tcp_stats.count();
-                    }
-                    TlsMessage::ChangeCipherSpec => {
-                        // For TLS 1.2, usually marks encrypted messages after.
-                    }
-                    TlsMessage::Handshake(msg) => {
-                        // println!("Handshake msg {:?}", msg);
-                    }
-
-                    _ => {}
-                }
+                tcp_stats.count();
+            }
+            TlsMessage::ChangeCipherSpec => {
+                // For TLS 1.2, usually marks encrypted messages after.
+            }
+            TlsMessage::Handshake(msg) => {
+                // println!("Handshake msg {:?}", msg);
             }
 
-            match (plain_text.hdr.record_type) {
-                ApplicationData => {
-                    // println!("Application Data {:?}", app_data);
-                    let mut tcp_stats = TCP_STATS.write().unwrap();
-                    let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
-                    if conn.time_to_application_data == Duration::new(0, 0)
+            _ => {}
+        }
+    }
+
+    if plain_text.hdr.record_type == TlsRecordType::ApplicationData {
+        // println!("Application Data {:?}", app_data);
+        let mut tcp_stats = TCP_STATS.write().unwrap();
+        let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+        if conn.time_to_application_data == Duration::new(0, 0)
                         // TODO filter that we cannot fetch tcp stat, right now just a heuristic
                         && Instant::now().duration_since(conn.client_time) > Duration::from_millis(1)
-                    {
-                        println!("First Application Data");
-                        conn.time_to_application_data =
-                            Instant::now().duration_since(conn.client_time);
-                        tcp_stats.count();
-                    }
-                }
-                _ => {
-                    // println!("Something {:?}", msg);
-                }
-            }
-        }
-        _ => {
-            // println!("Not TLS {:?}", e)
-        }
-    }
-}
-
-fn highest_version(highest: u16, versions: &Vec<TlsVersion>) -> u16 {
-    let mut highest = highest;
-
-    for version in versions {
-        if !(GREASE_TABLE.iter().any(|g| g == &version.0)) {
-            highest = cmp::max(highest, version.0);
+        {
+            conn.time_to_application_data = Instant::now().duration_since(conn.client_time);
+            // time to first application data or more commonly time to first byte
+            println!(
+                "Time to first byte: {}",
+                conn.time_to_application_data.as_millis()
+            );
+            tcp_stats.count();
         }
     }
 
-    highest
-}
-
-// from https://github.com/rusticata/rusticata/blob/master/src/tls.rs
-
-/// https://tools.ietf.org/html/draft-davidben-tls-grease-00
-const GREASE_TABLE: &[u16] = &[
-    0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a, 0x8a8a, 0x9a9a, 0xaaaa, 0xbaba,
-    0xcaca, 0xdada, 0xeaea, 0xfafa,
-];
-
-/// SSLVersion,Cipher,SSLExtension,EllipticCurve,EllipticCurvePointFormat
-pub fn build_ja3_fingerprint(
-    content: &TlsClientHelloContents,
-    extensions: &Vec<TlsExtension>,
-) -> String {
-    let mut ja3 = format!("{},", u16::from(content.version));
-
-    let ciphers = content.ciphers.iter().join("-");
-    ja3.push_str(&ciphers);
-    ja3.push(',');
-
-    let ext_str = extensions
-        .iter()
-        .map(|x| TlsExtensionType::from(x))
-        .map(|x| u16::from(x))
-        .filter(|x| !(GREASE_TABLE.iter().any(|g| g == x)))
-        .join("-");
-    ja3.push_str(&ext_str);
-    ja3.push(',');
-
-    for ext in extensions {
-        match ext {
-            &TlsExtension::EllipticCurves(ref ec) => {
-                ja3.push_str(
-                    &ec.iter()
-                        .map(|x| x.0)
-                        .filter(|x| !(GREASE_TABLE.iter().any(|g| g == x)))
-                        .join("-"),
-                );
-            }
-            _ => (),
-        }
-    }
-    ja3.push(',');
-
-    for ext in extensions {
-        match ext {
-            &TlsExtension::EcPointFormats(ref pf) => {
-                ja3.push_str(&pf.iter().join("-"));
-            }
-            _ => (),
-        }
-    }
-
-    ja3
-}
-
-fn is_tls13(_content: &TlsServerHelloContents, extensions: &Vec<TlsExtension>) -> bool {
-    // look extensions, find the TlsSupportedVersion
-    extensions
-        .iter()
-        .find(|&ext| TlsExtensionType::SupportedVersions == ext.into())
-        .map(|ref ext| {
-            if let TlsExtension::SupportedVersions(ref versions) = ext {
-                versions.len() == 1 && versions[0] == TlsVersion::Tls13
-            } else {
-                false
-            }
-        })
-        .unwrap_or(false)
+    Some(())
 }

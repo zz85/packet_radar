@@ -295,14 +295,12 @@ impl IcmpProber {
     pub fn setup() -> Option<IcmpProber> {
         let protocol = Layer4(Ipv4(IpNextHeaderProtocols::Icmp));
 
-        let (tx, rx) = transport_channel(4096, protocol).unwrap();
-        // let (mut tx, mut rx) = match transport_channel(4096, protocol) {
-        //     Ok((tx, rx)) => (tx, rx),
-        //     Err(e) => panic!(
-        //         "An error occurred when creating the transport channel: {}",
-        //         e
-        //     ),
-        // };
+        let (tx, rx) = transport_channel(4096, protocol)
+            .map_err(|e| {
+                println!("An error occurred when creating the transport channel: {e}");
+                e
+            })
+            .ok()?;
 
         Some(IcmpProber { tx })
     }
