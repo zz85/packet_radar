@@ -89,6 +89,8 @@ fn tcp_state_desc(state: TcpSIState) -> &'static str {
 on new connection, look up
 a) /proc/net/ (linux)
 b) lsof (mac) - requires spawnning processes
+   lsof internals - https://github.com/apple-opensource/lsof/blob/master/lsof/
+
 c) netstat? - buggy tcp6 implementation
 d) netstat2
 
@@ -290,7 +292,7 @@ impl ConnectionTracker {
         // update connections tuples with bytes sent
         let msg_len = msg.len as u64;
         let mut bytes_sent = 0;
-        let mut bytes_recv = 0;
+        let mut bytes_recv: u64 = 0;
         if conn_meta.info.local_addr == src {
             bytes_sent = msg_len;
         } else {
@@ -311,22 +313,42 @@ impl ConnectionTracker {
         }
     }
 
+    /// display top candidates based on bandwidth
     fn top(&self) {
-        let connections: Vec<ConnectionMeta> = self.connections.values().cloned().collect();
+        // Breakdown top talkers
+        // 1. by connections (using 5 tuples)
+        // 2. by pid (unique process)
+        // TODO
+        // 3. by remote destination (based on ip or domain)
+        // 4. by process names
+
+        let mut connections: Vec<ConnectionMeta> = self.connections.values().cloned().collect();
+
+        connections.sort_by(|a, b| b.bytes_recv.cmp(&a.bytes_recv));
+
+        println!("Top connections ({})", connections.len());
+        println!("----------");
+        connections[..50]
+            .into_iter()
+            .for_each(|v| println!("{:?}", v));
+        println!("----------");
 
         let mut top_pids: Vec<ProcessMeta> = self.pid_cache.values().cloned().collect();
         top_pids.sort_by(|a, b| b.bytes.cmp(&a.bytes));
         println!("Top PID ({})", top_pids.len());
         println!("----------");
-        top_pids[..10].into_iter().for_each(|v| {
-            println!(
-                "[{}] {} {} {}",
-                v.pid,
-                v.name,
-                v.bytes,
-                convert(v.bytes as f64)
-            )
+        top_pids[..20].into_iter().for_each(|v| {
+            // println!(
+            //     "[{}] {} {} {}",
+            //     v.pid,
+            //     v.name,
+            //     v.bytes,
+            //     convert(v.bytes as f64)
+            // )
+
+            println!("{:?}", v)
         });
+        println!("----------");
 
         // connections.iter().for_each(|c| {
         //     println!("{:?}", c);
@@ -340,7 +362,11 @@ impl ConnectionTracker {
 
     /// get pids and process informations for all sockets
     fn update_pid_info(&mut self) {
-        let sockets = processes_and_sockets();
+        let sockets = get_processes_and_sockets();
+
+        sockets.iter().for_each(|v| println!("{}", v));
+        println!("Sockets {}", sockets.len());
+
         sockets.into_iter().for_each(|sock| {
             // update pid cache
             self.pid_cache.entry(sock.pid).or_insert_with(|| {
@@ -366,7 +392,7 @@ impl ConnectionTracker {
 
             // if 4 tuple is found, update pid information
             self.connections
-                .entry(sock.four_tuple())
+                .entry(unique_tuple(sock.four_tuple()))
                 .and_modify(|c| {
                     c.info.pid = sock.pid;
                     c.info.state = sock.state;
@@ -398,10 +424,6 @@ impl ConnectionMeta {
 pub fn start_monitoring(rx: Receiver<PacketInfo>) {
     // TODO move these into a single protected struct and avoid unwraps!
     let connections: Arc<RwLock<ConnectionTracker>> = Default::default();
-
-    // let mut connections: Arc<RwLock<HashMap<(String, u16, String, u16), u32>>> = Default::default();
-    // let mut processes: Arc<RwLock<HashMap<u32, ProcessMeta>>> = Default::default();
-
     let connections_on_packet = connections.clone();
 
     // Update connection tracker based on packets received
@@ -413,21 +435,26 @@ pub fn start_monitoring(rx: Receiver<PacketInfo>) {
         }
     });
 
-    let top_processes = connections.clone();
+    // let tracker = connections.clone();
+    // thread::spawn(move || loop {
+    //     tracker.write().unwrap().update_pid_info();
+    //     tracker.read().unwrap().top();
 
+    //     thread::sleep(Duration::from_millis(3000));
+    // });
+
+    let top_processes = connections.clone();
     thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(3000));
+        thread::sleep(Duration::from_millis(5000));
 
         top_processes.read().unwrap().top();
     });
 
     let connections_for_pids = connections.clone();
-    thread::spawn(move || -> ! {
-        loop {
-            println!("processes_and_sockets");
-            thread::sleep(Duration::from_millis(2000));
-            connections_for_pids.write().unwrap().update_pid_info();
-        }
+    thread::spawn(move || loop {
+        println!("get_processes_and_sockets");
+        thread::sleep(Duration::from_millis(1000));
+        connections_for_pids.write().unwrap().update_pid_info();
     });
 }
 
@@ -492,12 +519,8 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
 }
 
 // Get sockets
-pub fn processes_and_sockets() -> Vec<SockInfo> {
+pub fn get_processes_and_sockets() -> Vec<SockInfo> {
     let socks = get_processes().unwrap_or_default();
-
-    // socks.iter().for_each(|v| println!("{}", v));
-    println!("Sockets {}", socks.len());
-
     socks
 }
 
@@ -533,7 +556,7 @@ fn debug_socket_info(socket_info: SocketInfo) {
             print!("{:?}, ", socket_state);
         }
     }
-    println!("");
+    println!();
 }
 
 fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: SockType) -> SockInfo {
@@ -603,7 +626,7 @@ fn test() {
     println!("===============");
     let start = Instant::now();
     // probably as good as lsof -P -i4 -i6 -c 0
-    processes_and_sockets();
+    get_processes_and_sockets();
     println!("\n\n # Netstat1 {:?}", start.elapsed());
 
     println!("Test netstat 2");

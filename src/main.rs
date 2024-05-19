@@ -44,34 +44,66 @@ mod quic;
 
 mod tls;
 
+use clap::Parser;
+
+#[derive(Parser, Debug, Clone)]
+#[command(version, about, long_about = None)]
+struct Args {
+    // #[arg(short, long, default_value_t = true)]
+    // top: bool,
+    #[arg(short, long)]
+    monitoring: bool,
+
+    /// websockets support
+    #[arg(short, long, default_value_t = true)]
+    ws: bool,
+
+    /// websocket bind addr
+    #[arg(short, long, default_value = "127.0.0.1:3012")]
+    server: String,
+
+    #[arg(short, long, default_value_t = false)]
+    tls_fingerprint: bool,
+}
+
 /**
  * This file starts a packet capture and a websocket server
  * Events are forwarded to connected clients
  */
 
 fn main() {
+    let args = Args::parse();
+
     // test_lookups()
-    let bind = env::args().nth(1).unwrap_or("127.0.0.1:3012".to_owned());
-    println!(
-        "Websocket server listening on {}. Open html/packet_viz.html",
-        bind
-    );
-    let server = Server::bind(bind).unwrap();
-
-    let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
-
     // let (tx, rx) = mpsc::channel();
+
     let (tx, rx) = unbounded();
 
-    spawn_broadcast(rx.clone(), clients.clone());
+    if args.ws {
+        let bind = &args.server;
+        println!(
+            "Websocket server listening on {}. Open html/packet_viz.html",
+            bind
+        );
+        let server = Server::bind(bind).unwrap();
+
+        let clients: Arc<RwLock<Vec<Writer<TcpStream>>>> = Default::default();
+
+        spawn_broadcast(rx.clone(), clients.clone());
+
+        thread::spawn(|| handle_clients(server, clients));
+    }
 
     // traceroute::set_callback(tx.clone());
 
-    // runs packet capture in its thread
-    thread::spawn(move || cap(tx));
-    processes::start_monitoring(rx);
+    // process and bandiwth monitoring
+    if args.monitoring {
+        processes::start_monitoring(rx);
+    }
 
-    handle_clients(server, clients);
+    // runs packet capture in its thread
+    // thread::spawn(move || cap(tx, &args));
+    cap(tx, &args)
 }
 
 fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {

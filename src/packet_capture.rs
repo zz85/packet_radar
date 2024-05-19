@@ -17,13 +17,11 @@ use super::{parse_dns, reverse_lookup};
 use super::parse_tcp_payload;
 use super::{handle_echo_reply, handle_time_exceeded};
 
-use std::convert::TryFrom;
-
 use std::net::IpAddr;
 
 use crossbeam::channel::Sender;
 
-use crate::quic;
+use crate::{quic, Args};
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
@@ -31,15 +29,17 @@ const DEBUG: bool = false;
 pub fn is_local(ip: IpAddr) -> bool {
     let interfaces = pnet::datalink::interfaces();
     for interface in interfaces {
-        for ip in interface.ips {
-            return true;
+        for ipnet in interface.ips {
+            if ipnet.ip() == ip {
+                return true;
+            }
         }
     }
 
     return false;
 }
 
-pub fn cap(tx: Sender<PacketInfo>) {
+pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
     println!("Running pcap...");
     println!("Devices {:?}", Device::list());
 

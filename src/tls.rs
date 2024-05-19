@@ -8,7 +8,7 @@ use md5;
 use tls_parser::tls::*;
 use tls_parser::tls_extensions::*;
 
-const JA3: bool = true;
+const JA3: bool = false;
 
 // references
 // https://github.com/rusticata/rusticata/blob/master/src/tls.rs
