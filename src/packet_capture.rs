@@ -175,7 +175,7 @@ fn handle_udp_packet(
             src: source.to_string(),
             dest_port: udp.get_destination(),
             src_port: udp.get_source(),
-            t: String::from("u"),
+            t: crate::structs::PacketType::Udp,
         };
 
         tx.send(packet_info).unwrap();
@@ -282,7 +282,7 @@ fn handle_tcp_packet(
             src: source.to_string(),
             dest_port: tcp.get_destination(),
             src_port: tcp.get_source(),
-            t: String::from("t"),
+            t: crate::structs::PacketType::Tcp,
         };
 
         tx.send(packet_info).unwrap();

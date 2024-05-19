@@ -138,15 +138,20 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
 
         match m {
             TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) => {
-                let highest = process_client_hello(client_hello);
+                let ch = process_client_hello(client_hello);
 
                 // get connection
                 let mut tcp_stats = TCP_STATS.write().unwrap();
                 let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
-                conn.client_tls_version = highest;
+                conn.client_tls_version = ch.version;
                 conn.client_time = Instant::now();
 
-                println!("Client Hello Version {} - {}", key, TlsVersion(highest));
+                println!(
+                    "Client Hello Version {} - {} - {:?}",
+                    key,
+                    TlsVersion(ch.version),
+                    ch
+                );
 
                 tcp_stats.count();
             }

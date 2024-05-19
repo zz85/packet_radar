@@ -7,8 +7,16 @@ pub struct PacketInfo {
     pub dest: String,
     pub src_port: u16,
     pub dest_port: u16,
-    pub t: String, // type: t for tcp, u for udp
-                   // todo timestamp + id
+    pub t: PacketType, // type: t for tcp, u for udp
+                       // todo timestamp + id
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum PacketType {
+    #[serde(rename = "t")]
+    Tcp,
+    #[serde(rename = "u")]
+    Udp,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

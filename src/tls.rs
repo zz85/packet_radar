@@ -8,7 +8,7 @@ use md5;
 use tls_parser::tls::*;
 use tls_parser::tls_extensions::*;
 
-const JA3: bool = false;
+const JA3: bool = true;
 
 // references
 // https://github.com/rusticata/rusticata/blob/master/src/tls.rs
@@ -23,7 +23,16 @@ fn is_greased(val: &u16) -> bool {
     GREASE_TABLE.contains(val)
 }
 
-pub fn process_client_hello(client_hello: tls_parser::TlsClientHelloContents<'_>) -> u16 {
+#[derive(Default, Debug)]
+pub struct ClientHello {
+    pub version: u16,
+    pub sni: String,
+    pub ja3: Option<String>,
+    pub ja4: Option<String>,
+}
+
+pub fn process_client_hello(client_hello: tls_parser::TlsClientHelloContents<'_>) -> ClientHello {
+    let mut info = ClientHello::default();
     let mut highest = client_hello.version.0;
 
     if let Some(v) = client_hello.ext {
@@ -39,7 +48,7 @@ pub fn process_client_hello(client_hello: tls_parser::TlsClientHelloContents<'_>
                 match ext {
                     TlsExtension::SNI(sni) => {
                         for (_, b) in sni {
-                            println!("Sni: {}", std::str::from_utf8(b).unwrap_or(""));
+                            info.sni = std::str::from_utf8(b).unwrap_or("").to_owned();
                         }
                     }
                     TlsExtension::SupportedVersions(sv) => {
@@ -49,17 +58,22 @@ pub fn process_client_hello(client_hello: tls_parser::TlsClientHelloContents<'_>
                 }
             }
 
+            info.version = highest;
+
             if JA3 {
                 let ja3 = build_ja3_fingerprint(&client_hello, &extensions);
                 let digest = md5::compute(&ja3);
-                println!("JA3: {} --> {:x}", ja3, digest);
+                let ja3_debug = format!("JA3: {} --> {:x}", ja3, digest);
 
-                let ja4 = build_ja4_fingerprint(&client_hello, &extensions);
-                println!("JA4: {ja4}");
+                let (ja4, debug) = build_ja4_fingerprint(&client_hello, &extensions);
+                let ja4_debug = format!("JA4: {ja4} {debug}");
+
+                info.ja3 = Some(format!("{digest:x}"));
+                info.ja4 = Some(ja4);
             }
         }
     }
-    highest
+    info
 }
 
 pub fn process_server_hello(server_hello: tls_parser::TlsServerHelloContents<'_>) -> u16 {
@@ -206,7 +220,7 @@ fn hash12(s: impl AsRef<str>) -> String {
 pub fn build_ja4_fingerprint(
     client_hello: &TlsClientHelloContents,
     extensions: &Vec<TlsExtension>,
-) -> String {
+) -> (String, String) {
     let mut ciphers = client_hello
         .get_ciphers()
         .iter()
@@ -336,7 +350,8 @@ pub fn build_ja4_fingerprint(
     let part3 = format!("{exts}{opt_underscore}{sig_alg}");
     let exts_hash = hash12(&part3);
 
-    let sig = format!("{first_chunk}_{ciphers_hash}_{exts_hash} <- {ciphers} {part3}");
+    let sig = format!("{first_chunk}_{ciphers_hash}_{exts_hash}");
+    let debug = format!("{ciphers} {part3}");
 
-    sig
+    (sig, debug)
 }
