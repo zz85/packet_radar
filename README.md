@@ -2,12 +2,12 @@
 
 Packet Radar is a realtime network traffic visualization experiment.
 
-It uses pcap to capture packets and displays the information in various ways like wireshark.
+It uses libpcap to capture packets and displays the information in various ways like wireshark.
 
 - packet fight viz - visualizes and animates packets transferring between hosts.
 - packet stats - a dashboard showing real-time network telemetry like data rates.
 - packet top - shows top connections
-- packet tail - a simple packet log viwer
+- packet tail - a simple packet log viewer
 
 This started as a weekend project project for
 - playing around with rust
@@ -16,7 +16,7 @@ This started as a weekend project project for
 
 If you like this, you may also be interested in [Space Rader](https://github.com/zz85/space-radar), a disk space visualization app.
 
-Server uses nightly rust, UI is done with Canvas + JS.
+Server uses rust, UI is done with Canvas + JS.
 
 ### Server
 
@@ -36,9 +36,9 @@ cargo run
 
 ### Or if you require sudo
 cargo build
-sudo target/debug/packet_radar
+sudo target/debug/packet_radar -m
 
-(s/debug/release if --release)
+(s/debug/release if `--release`)
 ```
 
 ### Visualization
@@ -59,27 +59,26 @@ open `html/packet_viz.html` in your browser
 ### IDEAs / TODO
 - [x] DNS resolution
 - [x] Find local addresses
-- [ ] Whois
 - [x] Ping / ICMP Traceroute probes
 - [ ] TCP/UDP trace probes
 - [x] Traffic categorization (UDP, TCP,..
-- [ ] TLS)
+- [ ] TLS, QUIC)
 - [x] DNS capture
-- [ ] RTT Analysis
+- [ ] RTT / light distance Analysis
 - [ ] Packet replay
 - [ ] Terminal interface
 - [ ] Visual traceroute
-- [x] Geoip
+- [-] Geoip / ASN breakdown
+- [ ] Whois / What's my ip whatsmyip
 - [ ] SSL Key log decoding
-- [ ] TLS Parsing
-- [ ] Quic Packet Parsing
+- [x] TLS Parsing and Fingerprinting
+   - [ ] Fingerprinting stats by processes
+   - [ ] TLS Stats
+- [-] Quic Packet Parsing
 - [ ] Sankey diagrams
 - [x] Netstat / Socket listings
 - [x] Break connections by processes - Top process bandwidth
-- [ ] What's my ip whatsmyip
-- [ ] ASN breakdown
-
-Organize the modules
-Integrate GeoIP / ASN
-Socket -> Process
-TLS Stats
+- [x] Top connection/processes by bandwidth
+- [ ] Viz: breakdown by processes
+- [ ] Metadata mapping
+- [ ] Plugable architecture

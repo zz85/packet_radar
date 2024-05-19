@@ -218,18 +218,20 @@ impl Meter {
 
     fn stats(&self) {
         println!(
-            "Size: min avg max {} {} {} Count: {}",
+            "Stats Count: {} Min: {} P50: {} P95: {}, Max: {}",
+            self.histo.len(),
             self.histo.min(),
             self.histo.value_at_quantile(0.5),
+            self.histo.value_at_quantile(0.95),
             self.histo.max(),
-            self.histo.len()
         );
+
         println!(
-            "Rate: min avg max {} {} {} Count: {}",
-            self.rate.min(),
+            "Bytes per second Min: {} P50: {} P95: {}, Max: {}",
+            self.rate.value_at_quantile(0.),
             self.rate.value_at_quantile(0.5),
-            self.rate.max(),
-            self.rate.len()
+            self.rate.value_at_quantile(0.95),
+            self.rate.value_at_quantile(1.),
         );
     }
 }
@@ -301,14 +303,14 @@ impl ConnectionTracker {
         let mut bytes_recv: u64 = 0;
         if conn_meta.info.local_addr == src {
             bytes_sent = msg_len;
+            self.out_bytes.add(bytes_sent);
         } else {
             bytes_recv = msg_len;
+            self.in_bytes.add(bytes_recv);
         }
 
         conn_meta.bytes_sent += bytes_sent;
         conn_meta.bytes_recv += bytes_recv;
-        self.out_bytes.add(bytes_sent);
-        self.in_bytes.add(bytes_recv);
 
         if let Some(pid) = conn_meta.info.pid {
             self.pid_cache.entry(pid).and_modify(|pid| {
@@ -327,6 +329,8 @@ impl ConnectionTracker {
         // TODO
         // 3. by remote destination (based on ip or domain or preferred name eg. sni)
         // 4. by process names
+        // 5. asns
+        // 6. countries
 
         let mut connections: Vec<ConnectionMeta> = self.connections.values().cloned().collect();
 
@@ -371,10 +375,10 @@ impl ConnectionTracker {
             });
         println!("----------");
 
-        // println!("Out");
-        // self.out_bytes.stats();
-        // println!("In");
-        // self.in_bytes.stats();
+        println!("Out");
+        self.out_bytes.stats();
+        println!("In");
+        self.in_bytes.stats();
     }
 
     /// get pids and process informations for all sockets
@@ -504,7 +508,7 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
                             // println!("{} ({}) - {}", sock, process_name, process_path);
                             return Some(sock);
                         } else {
-                            println!("Other sockets");
+                            println!("Other sockets {}", pid);
                         }
                     }
                     SocketInfoKind::Tcp => {
