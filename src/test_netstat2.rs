@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
 
 pub fn test_netstat2() {
@@ -11,7 +13,11 @@ pub fn test_netstat2() {
         }
     };
 
+    let now = Instant::now();
     let sys = get_sys();
+    println!("Get sys time: {:?}", now.elapsed());
+
+    println!("netstat2 socket count: {}", sockets_info.len());
 
     for si in sockets_info {
         match si.protocol_socket_info {
@@ -53,11 +59,12 @@ pub fn test_netstat2() {
  * this probably can replace netstat or my custom implemntation of netstat
  */
 
-use sysinfo::{NetworkExt, Pid, ProcessExt, ProcessorExt, Signal, System, SystemExt};
+use sysinfo::{NetworkExt, Pid, ProcessExt, ProcessorExt, RefreshKind, Signal, System, SystemExt};
 
 pub fn get_sys() -> System {
     /* uses sys crate */
-    let sys = System::new();
+    // let sys = System::new();
+    let sys = System::new_with_specifics(RefreshKind::everything().without_disk_list());
 
     println!("total memory: {} kB", sys.get_total_memory());
     println!("used memory : {} kB", sys.get_used_memory());
@@ -72,14 +79,14 @@ fn get_pid_info(sys: &System, pid: u32) {
     // if let Ok(pid) = Pid::from(pid) {
     match sys.get_process(pid as i32) {
         Some(p) => {
-            println!(
-                "{}\t{:?}\t{}\t{}\t{}",
-                p.name(),
-                p.exe(),
-                p.memory(),
-                p.status(),
-                p.start_time()
-            );
+            // println!(
+            //     "{}\t{:?}\t{}\t{}\t{}",
+            //     p.name(),
+            //     p.exe(),
+            //     p.memory(),
+            //     p.status(),
+            //     p.start_time()
+            // );
             // cpu_usage()
             // println!("{:?}", *p)
             // https://github.com/GuillaumeGomez/sysinfo/blob/74602704a7e21192c08fce1fc9cce5d126e7b632/src/mac/process.rs#L172
@@ -90,3 +97,8 @@ fn get_pid_info(sys: &System, pid: u32) {
         None => println!("pid \"{:?}\" not found", pid),
     };
 }
+
+// 4/5 ms
+// 300 for getting proc ids
+
+// pids - 5s

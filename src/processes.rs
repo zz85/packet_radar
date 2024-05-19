@@ -126,6 +126,7 @@ pub struct SockInfo {
     pub remote_port: u16,
     pub remote_addr: IpAddr,
     pub pid: u32,
+    pub state: Option<&'static str>,
 }
 
 impl SockInfo {
@@ -158,13 +159,14 @@ impl Display for SockInfo {
 
         write!(
             f,
-            "{}\t{}:{} -> {}:{} [{}]",
+            "{}\t{}:{} -> {}:{} [{}] ({})",
             proto_str,
             self.local_addr,
             self.local_port,
             self.remote_addr,
             self.remote_port,
-            self.pid
+            self.pid,
+            self.state.unwrap_or_default()
         )
     }
 }
@@ -174,11 +176,14 @@ use std::sync::RwLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct ProcessMeta {
     pid: u32,
     name: String,
+    process_path: String,
     bytes: u64,
+    bytes_recv: u64,
+    bytes_sent: u64,
 }
 
 use crate::packet_capture::is_local;
@@ -241,7 +246,8 @@ impl Default for Meter {
 #[derive(Debug, Clone, Default)]
 struct ConnectionTracker {
     connections: HashMap<(String, u16, String, u16), ConnectionMeta>,
-    processes: HashMap<u32, ProcessMeta>,
+    /// cached pids -> process meta infomation
+    pid_cache: HashMap<u32, ProcessMeta>,
 
     out_bytes: Meter,
     in_bytes: Meter,
@@ -257,7 +263,7 @@ impl ConnectionTracker {
         let keyed_tuple = unique_tuple((msg.src, msg.src_port, msg.dest, msg.dest_port));
 
         // Populate connections
-        let entry = self.connections.entry(keyed_tuple).or_insert_with(|| {
+        let conn_meta = self.connections.entry(keyed_tuple).or_insert_with(|| {
             let info = match is_local(src) {
                 true => SockInfo {
                     proto: SockType::TCP, // FIXME
@@ -266,6 +272,7 @@ impl ConnectionTracker {
                     remote_addr: dst,
                     remote_port: dst_port,
                     pid: 99999,
+                    state: None,
                 },
                 false => SockInfo {
                     proto: SockType::TCP, // FIXME
@@ -274,66 +281,74 @@ impl ConnectionTracker {
                     remote_addr: src,
                     remote_port: src_port,
                     pid: 99999,
+                    state: None,
                 },
             };
             ConnectionMeta::new_with_sock_info(info)
         });
 
+        // update connections tuples with bytes sent
         let msg_len = msg.len as u64;
-        if entry.info.local_addr == src {
-            entry.bytes_sent += msg_len;
-            self.out_bytes.add(msg_len);
+        let mut bytes_sent = 0;
+        let mut bytes_recv = 0;
+        if conn_meta.info.local_addr == src {
+            bytes_sent = msg_len;
         } else {
-            entry.bytes_recv += msg_len;
-            self.in_bytes.add(msg_len);
+            bytes_recv = msg_len;
+        }
+
+        conn_meta.bytes_sent += bytes_sent;
+        conn_meta.bytes_recv += bytes_recv;
+        self.out_bytes.add(bytes_sent);
+        self.in_bytes.add(bytes_recv);
+
+        if conn_meta.info.pid != 9999 {
+            self.pid_cache.entry(conn_meta.info.pid).and_modify(|pid| {
+                pid.bytes += msg_len;
+                pid.bytes_sent += bytes_sent;
+                pid.bytes_recv += bytes_sent;
+            });
         }
     }
 
     fn top(&self) {
         let connections: Vec<ConnectionMeta> = self.connections.values().cloned().collect();
 
-        let mut top: Vec<ProcessMeta> = self
-            .processes
-            .values()
-            .cloned()
-            .map(|proc| {
-                let mut size = 0;
-                for c in &connections {
-                    if c.info.pid == proc.pid {
-                        size += c.bytes_recv;
-                        size += c.bytes_sent;
-                    }
-                }
-
-                ProcessMeta {
-                    pid: proc.pid,
-                    name: proc.name,
-                    bytes: size,
-                }
-            })
-            .collect();
-        top.sort_by(|a, b| b.bytes.cmp(&a.bytes));
-        println!("Top");
-        println!("-----");
-        println!("Connection count:\t{}", connections.len());
-        top[..5]
-            .into_iter()
-            .for_each(|v| println!("{} {} {}", v.name, v.bytes, convert(v.bytes as f64)));
+        let mut top_pids: Vec<ProcessMeta> = self.pid_cache.values().cloned().collect();
+        top_pids.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+        println!("Top PID ({})", top_pids.len());
+        println!("----------");
+        top_pids[..10].into_iter().for_each(|v| {
+            println!(
+                "[{}] {} {} {}",
+                v.pid,
+                v.name,
+                v.bytes,
+                convert(v.bytes as f64)
+            )
+        });
 
         // connections.iter().for_each(|c| {
         //     println!("{:?}", c);
         // })
 
-        println!("Out");
-        self.out_bytes.stats();
-        println!("In");
-        self.in_bytes.stats();
+        // println!("Out");
+        // self.out_bytes.stats();
+        // println!("In");
+        // self.in_bytes.stats();
     }
 
-    fn get_proccess(&mut self) {
+    /// get pids and process informations for all sockets
+    fn update_pid_info(&mut self) {
         let sockets = processes_and_sockets();
-        sockets.iter().for_each(|sock| {
-            self.processes.entry(sock.pid).or_insert_with(|| {
+        sockets.into_iter().for_each(|sock| {
+            // update pid cache
+            self.pid_cache.entry(sock.pid).or_insert_with(|| {
+                let name = match proc_pid::name(sock.pid as i32) {
+                    Ok(name) => name,
+                    Err(_) => " - ".to_owned(),
+                };
+
                 let process_path = match proc_pid::pidpath(sock.pid as i32) {
                     Ok(name) => name,
                     Err(_) => " - ".to_owned(),
@@ -341,25 +356,23 @@ impl ConnectionTracker {
 
                 let meta = ProcessMeta {
                     pid: sock.pid,
-                    name: process_path,
-                    bytes: 0,
+                    name,
+                    process_path,
+                    ..Default::default()
                 };
 
                 meta
             });
 
-            self.connections.entry(sock.four_tuple()).and_modify(|c| {
-                c.info.pid = sock.pid;
-            });
+            // if 4 tuple is found, update pid information
+            self.connections
+                .entry(sock.four_tuple())
+                .and_modify(|c| {
+                    c.info.pid = sock.pid;
+                    c.info.state = sock.state;
+                })
+                .or_insert(ConnectionMeta::new_with_sock_info(sock));
         });
-
-        //  make sure connection entry exists
-        // s.iter().for_each(|s| {
-        //     connections
-        //         .write()
-        //         .unwrap()
-        //         .insert(unique_tuple(s.four_tuple()), s.pid);
-        // });
     }
 }
 
@@ -391,11 +404,11 @@ pub fn start_monitoring(rx: Receiver<PacketInfo>) {
 
     let connections_on_packet = connections.clone();
 
+    // Update connection tracker based on packets received
     thread::spawn(move || {
         let connections = connections_on_packet;
         for msg in rx.iter() {
             // println!("Got {:?}", msg);
-
             connections.write().unwrap().add_packet(msg);
         }
     });
@@ -408,13 +421,12 @@ pub fn start_monitoring(rx: Receiver<PacketInfo>) {
         top_processes.read().unwrap().top();
     });
 
-    let connections2 = connections.clone();
+    let connections_for_pids = connections.clone();
     thread::spawn(move || -> ! {
-        let connections = connections2;
         loop {
             println!("processes_and_sockets");
             thread::sleep(Duration::from_millis(2000));
-            connections.write().unwrap().get_proccess();
+            connections_for_pids.write().unwrap().update_pid_info();
         }
     });
 }
@@ -428,7 +440,7 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
     // let process_path = match proc_pid::pidpath(pid as i32) {
     //     Ok(name) => name,
     //     Err(_) => " - ".to_owned(),
-    // }
+    // };
 
     match fd.proc_fdtype.into() {
         ProcFDType::Socket => {
@@ -438,15 +450,13 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
 
                 // SOI = socket info
                 match socket_info.soi_kind.into() {
-                    SocketInfoKind::Generic => {
-                        println!("Generic");
-                    }
+                    SocketInfoKind::Generic => {}
                     SocketInfoKind::In => {
                         if socket_info.soi_protocol == libc::IPPROTO_UDP {
                             let info = unsafe { socket_info.soi_proto.pri_in };
                             let sock = get_socket_info(pid, info, SockType::UDP);
                             // TODO add connection status
-                            // print!("{} ({})", sock, process_name);
+                            // println!("{} ({}) - {}", sock, process_name, process_path);
                             // println!("");
                             return Some(sock);
                         } else {
@@ -459,10 +469,10 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
                         let in_socket_info = info.tcpsi_ini;
 
                         // debug_socket_info(socket_info);
-                        let sock = get_socket_info(pid, in_socket_info, SockType::TCP);
-                        // print!("{} ({})", sock, process_name);
-                        // print!(" - {}", tcp_state_desc(TcpSIState::from(info.tcpsi_state)));
-                        // println!("");
+                        let mut sock = get_socket_info(pid, in_socket_info, SockType::TCP);
+                        // println!("{} ({}) - {}", sock, process_name, process_path);
+                        let state = tcp_state_desc(TcpSIState::from(info.tcpsi_state));
+                        sock.state = Some(state);
 
                         return Some(sock);
                     }
@@ -483,27 +493,35 @@ fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
 
 // Get sockets
 pub fn processes_and_sockets() -> Vec<SockInfo> {
-    let socks: Vec<SockInfo> = proc_pid::listpids(ProcType::ProcAllPIDS)
-        .ok()
-        .map(|pids| {
-            pids.into_iter()
-                .filter_map(|pid| pidinfo::<BSDInfo>(pid as i32, 0).ok())
-                .filter_map(|info| {
-                    listpidinfo::<ListFDs>(info.pbi_pid as i32, info.pbi_nfiles as usize)
-                        .ok()
-                        .map(|f| (info.pbi_pid, f))
-                })
-                .flat_map(|(pid, fds)| {
-                    fds.into_iter()
-                        .filter_map(move |fd| read_fd_socket(pid, &fd))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let socks = get_processes().unwrap_or_default();
 
     // socks.iter().for_each(|v| println!("{}", v));
+    println!("Sockets {}", socks.len());
 
     socks
+}
+
+pub fn get_processes() -> Option<Vec<SockInfo>> {
+    let pids: Vec<u32> = proc_pid::listpids(ProcType::ProcAllPIDS).ok()?;
+
+    let socks = pids
+        .into_iter()
+        // get bsd info
+        .filter_map(|pid| pidinfo::<BSDInfo>(pid as i32, 0).ok())
+        // get prof fd info
+        .filter_map(|info| {
+            listpidinfo::<ListFDs>(info.pbi_pid as i32, info.pbi_nfiles as usize)
+                .ok()
+                .map(|f| (info.pbi_pid, f))
+        })
+        // get socket info
+        .flat_map(|(pid, fds)| {
+            fds.into_iter()
+                .filter_map(move |fd| read_fd_socket(pid, &fd))
+        })
+        .collect();
+
+    Some(socks)
 }
 
 fn debug_socket_info(socket_info: SocketInfo) {
@@ -559,6 +577,7 @@ fn get_socket_info(pid: u32, in_socket_info: InSockInfo, proto: SockType) -> Soc
         remote_port: dest_port,
         proto,
         pid,
+        state: None,
     }
 }
 
@@ -574,6 +593,7 @@ fn convert_to_ipv6(addr: [u8; 16]) -> IpAddr {
     IpAddr::V6(Ipv6Addr::from(addr))
 }
 
+#[test]
 fn test() {
     use crate::test_netstat2::{get_sys, test_netstat2};
     use std::time::Instant;
@@ -582,14 +602,15 @@ fn test() {
     println!("Native MacOS network descriptions");
     println!("===============");
     let start = Instant::now();
+    // probably as good as lsof -P -i4 -i6 -c 0
     processes_and_sockets();
-    println!("netstat1 {:?}", start.elapsed());
+    println!("\n\n # Netstat1 {:?}", start.elapsed());
 
     println!("Test netstat 2");
     println!("===============");
     let start = Instant::now();
     test_netstat2();
-    println!("netstat2 {:?}", start.elapsed());
+    println!("\n\n # Netstat2 {:?}", start.elapsed());
 
     /* track connection, lookup connections to pid, count pid ++ */
 }

@@ -44,8 +44,6 @@ mod quic;
 
 mod tls;
 
-use std::convert::TryFrom;
-
 /**
  * This file starts a packet capture and a websocket server
  * Events are forwarded to connected clients
@@ -71,8 +69,7 @@ fn main() {
 
     // runs packet capture in its thread
     thread::spawn(move || cap(tx));
-
-    // processes::start_monitoring(rx);
+    processes::start_monitoring(rx);
 
     handle_clients(server, clients);
 }

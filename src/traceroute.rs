@@ -1,9 +1,8 @@
-use pnet::packet::ip::IpNextHeaderProtocols;
-// use pnet::packet::udp::MutableUdpPacket;
 use pnet::packet::icmp::echo_reply::EchoReplyPacket;
 use pnet::packet::icmp::echo_request::MutableEchoRequestPacket;
 use pnet::packet::icmp::time_exceeded::TimeExceededPacket;
 use pnet::packet::icmp::IcmpTypes;
+use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::Packet;
 use pnet::transport::transport_channel;
 use pnet::transport::TransportChannelType::Layer4;
