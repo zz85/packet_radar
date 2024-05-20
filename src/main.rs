@@ -40,6 +40,9 @@ use geoip::{asn_lookup, city_lookup, test_lookups};
 mod packet_capture;
 use packet_capture::cap;
 
+mod dipstick;
+// use dipstick::cap;
+
 mod quic;
 
 mod tls;
@@ -96,7 +99,7 @@ fn main() {
 
     // traceroute::set_callback(tx.clone());
 
-    // process and bandiwth monitoring
+    // process and bandwidth monitoring
     if args.monitoring {
         processes::start_monitoring(rx);
     }
@@ -104,6 +107,7 @@ fn main() {
     // runs packet capture in its thread
     // thread::spawn(move || cap(tx, &args));
     cap(tx, &args)
+    // cap(tx)
 }
 
 fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {

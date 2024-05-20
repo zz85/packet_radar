@@ -1,4 +1,3 @@
-
 use pcap::{Capture, Device};
 use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
@@ -12,8 +11,10 @@ use pnet::packet::udp::UdpPacket;
 
 use pnet::packet::*;
 
+use crate::packet_capture::handle_ethernet_packet;
+
+use super::PacketInfo;
 use super::{parse_dns, reverse_lookup};
-use super::{PacketInfo};
 
 use dipstick::{stats_all, AtomicBucket, InputScope, Output, ScheduleFlush, Stream};
 
@@ -37,7 +38,7 @@ pub fn cap(tx: Sender<PacketInfo>) {
     println!("Running pcap...");
     println!("Devices {:?}", Device::list());
 
-    let device = Device::lookup().unwrap();
+    let device = Device::lookup().unwrap().unwrap();
     println!("Default device {:?}", device);
 
     let name = device.name.as_str();
@@ -83,16 +84,15 @@ pub fn cap(tx: Sender<PacketInfo>) {
 
     bucket.drain(Stream::to_stdout());
     bucket.flush_every(std::time::Duration::from_secs(1));
-    
+
     let mut i = 0;
 
     let bytes = bucket.counter("bytes: ");
     let packets = bucket.marker("packets: ");
 
-
     loop {
         i += 1;
-        match cap.next() {
+        match cap.next_packet() {
             Ok(packet) => {
                 bytes.count(packet.len());
                 packets.mark();
@@ -118,14 +118,28 @@ pub fn cap(tx: Sender<PacketInfo>) {
         }
 
         let stats = cap.stats().unwrap();
-        if i % 10000 == 0 {
+
+        if i % 1000 == 0 {
             println!(
                 "Stats: Received: {}, Dropped: {}, if_dropped: {}",
                 stats.received, stats.dropped, stats.if_dropped
             );
             bucket.stats(stats_all);
             bucket.flush_to(&Stream::to_stdout().new_scope()).unwrap();
+
+            /*
+
+            Stats: Received: 975, Dropped: 0, if_dropped: 0
+            bytes: .count 43
+            bytes: .sum 14158
+            bytes: .max 1506
+            bytes: .min 66
+            bytes: .mean 329
+            bytes: .rate 14575
+            packets: .count 43
+            packets: .rate 44
+
+            */
         }
     }
-
 }

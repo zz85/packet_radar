@@ -93,6 +93,7 @@ b) lsof (mac) - requires spawnning processes
 
 c) netstat? - buggy tcp6 implementation
 d) netstat2
+e) bpf filter (eg. tcpdump -k)
 
 also see https://github.com/dalance/procs - https://github.com/dalance/procs/pull/9/files - https://github.com/dalance/procs/commit/e99a21b55121b3b99a6edc64a94ade1334bb7dee https://github.com/dalance/procs/blob/cfecc8ed37e5d34fc4f59401cd87f14b243250c7/src/process/macos.rs
 https://opensource.apple.com/source/lsof/lsof-49/lsof/dialects/darwin/libproc/dsock.c

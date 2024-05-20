@@ -99,7 +99,7 @@ pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
     // traceroute::test_traceroute();
 }
 
-fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<PacketInfo>) {
+pub(crate) fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<PacketInfo>) {
     let ether_type = ether.get_ethertype();
 
     match ether_type {
