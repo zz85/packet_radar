@@ -2,8 +2,6 @@ use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::sync::Server;
 
-use std::env;
-
 use std::net::TcpStream;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -14,40 +12,31 @@ extern crate enum_primitive_derive;
 extern crate num_traits;
 
 mod dns;
-use dns::{parse_dns, reverse_lookup};
 
 mod tcp;
-use tcp::parse_tcp_payload;
-
 mod traceroute;
-use traceroute::{handle_echo_reply, handle_time_exceeded};
-
-use crossbeam::channel::{unbounded, Receiver};
-
-mod processes;
-
-mod test_netstat2;
-
-mod structs;
-use structs::{ClientRequest, PacketInfo};
 
 mod client_connection;
-use client_connection::handle_clients;
-
-mod geoip;
-use geoip::{asn_lookup, city_lookup, test_lookups};
-
-mod packet_capture;
-use packet_capture::cap;
-
 mod dipstick;
-// use dipstick::cap;
-
+mod geoip;
+mod packet_capture;
+mod processes;
 mod quic;
-
+mod socket;
+mod structs;
+mod test_netstat2;
 mod tls;
 
+// use dipstick::cap;
 use clap::Parser;
+use client_connection::handle_clients;
+use crossbeam::channel::{unbounded, Receiver};
+use dns::{parse_dns, reverse_lookup};
+use geoip::{asn_lookup, city_lookup, test_lookups};
+use packet_capture::cap;
+use structs::{ClientRequest, PacketInfo};
+use tcp::parse_tcp_payload;
+use traceroute::{handle_echo_reply, handle_time_exceeded};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
