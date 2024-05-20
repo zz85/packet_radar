@@ -1,24 +1,24 @@
-use std::collections::HashMap;
-use std::sync::RwLock;
+use dashmap::{mapref::one::RefMut, DashMap};
 use tls_parser::{parse_tls_plaintext, TlsMessage, TlsMessageHandshake, TlsRecordType, TlsVersion};
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 lazy_static! {
-    pub static ref TCP_STATS: RwLock<TcpStats> = Default::default();
+    pub static ref TCP_STATS: TcpStats = Default::default();
 }
 
 const TLS_STATS: bool = false;
 
 use super::tls::{process_client_hello, process_server_hello};
 
-
 // IP Fragmentation
 // https://en.wikipedia.org/wiki/IP_fragmentation
 // https://tools.ietf.org/html/rfc791
 // https://tools.ietf.org/html/rfc815
 // https://packetpushers.net/ip-fragmentation-in-detail/
-
 
 #[derive(Debug, Copy, Clone)]
 pub struct ConnStat {
@@ -31,7 +31,7 @@ pub struct ConnStat {
 
 #[derive(Debug, Clone)]
 pub struct TcpStats {
-    conn_map: HashMap<String, ConnStat>,
+    conn_map: DashMap<String, ConnStat>,
 }
 
 impl Default for TcpStats {
@@ -47,7 +47,7 @@ impl TcpStats {
         }
     }
 
-    pub fn get_or_create_conn(&mut self, key: String) -> Option<&mut ConnStat> {
+    pub fn get_or_create_conn<'a>(&'a self, key: String) -> Option<RefMut<'a, String, ConnStat>> {
         if !self.conn_map.contains_key(&key) {
             let stat = ConnStat {
                 client_tls_version: 0,
@@ -63,13 +63,13 @@ impl TcpStats {
         self.conn_map.get_mut(&key)
     }
 
-    pub fn count(&mut self) {
+    pub fn count(&self) {
         if !TLS_STATS {
             return;
         }
 
         let map = &self.conn_map;
-        let len = map.keys().len();
+        let len = map.len();
 
         let mut client_12_count = 0;
         let mut client_13_count = 0;
@@ -78,7 +78,8 @@ impl TcpStats {
         let mut total_12_duration = Duration::new(0, 0);
         let mut total_13_duration = Duration::new(0, 0);
 
-        for stat in map.values() {
+        for stat in map.iter() {
+            let stat = stat.value();
             if stat.client_tls_version == TlsVersion::Tls12.0 {
                 client_12_count += 1;
             } else if stat.client_tls_version == TlsVersion::Tls13.0 {
@@ -149,8 +150,8 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
                 let ch = process_client_hello(client_hello);
 
                 // get connection
-                let mut tcp_stats = TCP_STATS.write().unwrap();
-                let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+                let tcp_stats = &TCP_STATS;
+                let mut conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
                 conn.client_tls_version = ch.version;
                 conn.client_time = Instant::now();
 
@@ -167,8 +168,8 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
                 let highest = process_server_hello(server_hello);
 
                 // get connection
-                let mut tcp_stats = TCP_STATS.write().unwrap();
-                let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+                let tcp_stats = &TCP_STATS;
+                let mut conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
                 conn.server_tls_version = highest;
                 conn.server_time = Instant::now();
                 println!(
@@ -196,8 +197,8 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
 
     if plain_text.hdr.record_type == TlsRecordType::ApplicationData {
         // println!("Application Data {:?}", app_data);
-        let mut tcp_stats = TCP_STATS.write().unwrap();
-        let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+        let tcp_stats = &TCP_STATS;
+        let mut conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
 
         if conn.time_to_application_data == Duration::new(0, 0)
         // TODO probably need to check outgoing app data vs incoming app data
