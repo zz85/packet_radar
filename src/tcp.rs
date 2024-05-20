@@ -168,7 +168,10 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
                     key,
                     TlsVersion(highest)
                 );
-                println!("{:?}", conn.server_time.duration_since(conn.client_time));
+                println!(
+                    "Client -> Server Hello time: {:?}",
+                    conn.server_time.duration_since(conn.client_time)
+                );
 
                 tcp_stats.count();
             }
@@ -187,9 +190,10 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
         // println!("Application Data {:?}", app_data);
         let mut tcp_stats = TCP_STATS.write().unwrap();
         let conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+
         if conn.time_to_application_data == Duration::new(0, 0)
-                        // TODO filter that we cannot fetch tcp stat, right now just a heuristic
-                        && Instant::now().duration_since(conn.client_time) > Duration::from_millis(1)
+        // TODO probably need to check outgoing app data vs incoming app data
+        // && Instant::now().duration_since(conn.client_time) > Duration::from_millis(1)
         {
             conn.time_to_application_data = Instant::now().duration_since(conn.client_time);
             // time to first application data or more commonly time to first byte

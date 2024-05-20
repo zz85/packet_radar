@@ -251,8 +251,9 @@ fn handle_tcp_packet(
         }
 
         // generate a key is uniquely id the 5 tuple
-        let key = match source < destination {
-            // is_local(source)
+        // instead of is_local(), source < destination is
+        // a hack to generate unique
+        let key = match is_local(source) {
             true => format!(
                 "tcp_{}:{}_{}:{}",
                 source,
