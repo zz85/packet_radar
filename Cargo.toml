@@ -39,3 +39,5 @@ hex-literal = "0.2"
 sha2 = "0.10.8"
 clap = { version = "4.5.4", features = ["derive"] }
 dashmap = "5.5.3"
+quick_cache = "0.5.1"
+pcap-parser = "0.15.0"

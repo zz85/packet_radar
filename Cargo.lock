@@ -18,6 +18,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
+name = "ahash"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
+dependencies = [
+ "cfg-if 1.0.0",
+ "getrandom 0.2.14",
+ "once_cell",
+ "version_check 0.9.4",
+ "zerocopy 0.7.34",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -213,6 +226,12 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "circular"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
 
 [[package]]
 name = "clap"
@@ -473,7 +492,7 @@ dependencies = [
  "log 0.4.21",
  "minreq",
  "num",
- "parking_lot",
+ "parking_lot 0.9.0",
  "time",
 ]
 
@@ -520,6 +539,12 @@ checksum = "be4551092f4d519593039259a9ed8daedf0da12e5109c5280338073eaeb81180"
 dependencies = [
  "num-traits 0.1.43",
 ]
+
+[[package]]
+name = "equivalent"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "errno"
@@ -1359,9 +1384,11 @@ dependencies = [
  "netstat2",
  "num-traits 0.2.19",
  "pcap",
+ "pcap-parser",
  "pnet",
  "pnet_macros_support 0.22.0",
  "pretty-bytes",
+ "quick_cache",
  "rand 0.7.3",
  "ring",
  "serde",
@@ -1371,7 +1398,7 @@ dependencies = [
  "tls-parser",
  "tokio",
  "websocket",
- "zerocopy",
+ "zerocopy 0.2.9",
 ]
 
 [[package]]
@@ -1383,6 +1410,16 @@ dependencies = [
  "lock_api 0.3.4",
  "parking_lot_core 0.6.3",
  "rustc_version",
+]
+
+[[package]]
+name = "parking_lot"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e4af0ca4f6caed20e900d564c242b8e5d4903fdacf31d3daf527b66fe6f42fb"
+dependencies = [
+ "lock_api 0.4.12",
+ "parking_lot_core 0.9.10",
 ]
 
 [[package]]
@@ -1426,6 +1463,17 @@ dependencies = [
  "pkg-config",
  "regex",
  "windows-sys 0.36.1",
+]
+
+[[package]]
+name = "pcap-parser"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a480475d0fe046a92de4f00abae56ee07c2b77a4cf383a786acfb5647909c16"
+dependencies = [
+ "circular",
+ "nom",
+ "rusticata-macros",
 ]
 
 [[package]]
@@ -1628,6 +1676,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ad3d49ab951a01fbaafe34f2ec74122942fe18a3f9814c3268f1bb72042131b"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "quick_cache"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "347e1a588d1de074eeb3c00eadff93db4db65aeb62aee852b1efd0949fe65b6c"
+dependencies = [
+ "ahash",
+ "equivalent",
+ "hashbrown",
+ "parking_lot 0.12.2",
 ]
 
 [[package]]
@@ -2340,7 +2400,7 @@ dependencies = [
  "log 0.4.21",
  "mio",
  "num_cpus",
- "parking_lot",
+ "parking_lot 0.9.0",
  "slab",
  "tokio-executor",
  "tokio-io",
@@ -2828,7 +2888,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "868979d514791b1d261b9f3d5a2a3497656dbfa3be25986ad1f03b8fbaf55d0f"
 dependencies = [
  "byteorder",
- "zerocopy-derive",
+ "zerocopy-derive 0.1.4",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.7.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae87e3fcd617500e5d106f0380cf7b77f3c6092aae37191433159dda23cfb087"
+dependencies = [
+ "zerocopy-derive 0.7.34",
 ]
 
 [[package]]
@@ -2840,4 +2909,15 @@ dependencies = [
  "proc-macro2 0.4.30",
  "syn 0.15.44",
  "synstructure",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.7.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15e934569e47891f7d9411f1a451d947a60e000ab3bd24fbb970f000387d1b3b"
+dependencies = [
+ "proc-macro2 1.0.82",
+ "quote 1.0.36",
+ "syn 2.0.64",
 ]

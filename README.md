@@ -1,8 +1,8 @@
 # Packet Radar
 
-Packet Radar is a realtime network traffic visualization experiment.
+Packet Radar is an experimental realtime network traffic visualization.
 
-It uses libpcap to capture packets and displays the information in various ways like wireshark.
+It captures packets like pcap and displays the information in various ways like wireshark.
 
 - packet fight viz - visualizes and animates packets transferring between hosts.
 - packet stats - a dashboard showing real-time network telemetry like data rates.
@@ -11,7 +11,7 @@ It uses libpcap to capture packets and displays the information in various ways 
 
 This started as a weekend project project for
 - playing around with rust
-- playing around with understanding packets
+- exploring and understanding some network protocol details
 - playing around with visualizations, animations and simulations
 
 If you like this, you may also be interested in [Space Rader](https://github.com/zz85/space-radar), a disk space visualization app.
@@ -72,7 +72,7 @@ open `html/packet_viz.html` in your browser
 - [ ] Whois / What's my ip whatsmyip
 - [ ] SSL Key log decoding
 - [x] TLS Parsing and Fingerprinting
-   - [x] Fingerprinting stats by processes
+   - [x] JA4 Fingerprinting stats by processes
    - [ ] TLS Stats
 - [-] Quic Packet Parsing
 - [ ] Sankey diagrams

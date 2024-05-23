@@ -270,7 +270,15 @@ impl ConnectionTracker {
 
         let conns_meta = crate::tcp::TCP_STATS.clone();
 
-        let mut process_fingerprint: HashMap<&str, HashSet<String>> = Default::default();
+        #[derive(Default, Debug)]
+        struct ProcStats {
+            rtt: Duration,
+            connections: u32,
+            pids: HashSet<u32>,
+            ja4: HashSet<String>,
+            sni: HashSet<String>,
+        }
+        let mut process_fingerprint: HashMap<&str, ProcStats> = Default::default();
 
         self.connections
             .iter()
@@ -284,10 +292,25 @@ impl ConnectionTracker {
 
                 match (pid_info, conns_meta.conn_map.get(&key)) {
                     (Some(pid_info), Some(conn)) => {
-                        let set = process_fingerprint
+                        let proc_stats = process_fingerprint
                             .entry(pid_info.name.as_str())
                             .or_default();
-                        set.insert(conn.ja4.clone().unwrap_or_default());
+
+                        if let Some(ja4) = &conn.ja4 {
+                            proc_stats.ja4.insert(ja4.clone());
+                        }
+
+                        if let Some(sni) = &conn.sni {
+                            proc_stats.sni.insert(sni.clone());
+                        }
+
+                        let diff = conn.server_time.duration_since(conn.client_time);
+                        if diff.as_millis() > 0 {
+                            proc_stats.rtt = diff;
+                        }
+
+                        proc_stats.pids.insert(pid_info.pid);
+                        proc_stats.connections += 1;
                     }
                     _ => {}
                 }
@@ -296,6 +319,9 @@ impl ConnectionTracker {
         // Fingerprints: {"com.apple.WebKit.Networking": {"t13d2014h2_a09f3c656075_14788d8d241b", "", "t13d2014h1_a09f3c656075_14788d8d241b"}, "wget": {"t13d691100_8b2139ff7677_4a0154eed145"}, "firefox": {"t13d1715h2_5b57614c22b0_7121afd63204", "t13d1715h1_5b57614c22b0_7121afd63204", "t00d1410h2_c866b44c5a26_b5b8faed2b99"}, "Microsoft Update Assistant": {"t13d1314h2_f57a46bbacb6_14788d8d241b"}, "Microsoft PowerPoint": {"t13d2014h2_a09f3c656075_14788d8d241b"}, "Google Chrome Helper": {"t13d1517h2_8daaf6152771_b0da82dd1658", "", "t13d1516h2_8daaf6152771_02713d6af862"}, "curl": {"t13d1812h2_e8a523a41297_3d739a8c35e1"}, "Slack Helper": {"t13d1517h2_8daaf6152771_b0da82dd1658"}, "Safari": {"t13d2014h2_a09f3c656075_14788d8d241b"}, "itunescloudd": {"t13d2014h2_a09f3c656075_14788d8d241b"}, "parsecd": {"t13d2015h2_a09f3c656075_3d00e4afe3b1"}}
         println!("Fingerprints: {process_fingerprint:?}");
 
+        // TODO augument via mac's PKTAP
+        // sudo tcpdump -i en0,pktap -w - | tee moo.pcapng
+        // or parse via https://github.com/rusticata/pcap-parser/pulls
         println!("----------");
 
         println!("Out");

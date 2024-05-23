@@ -60,13 +60,40 @@ pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
 
     println!("Capturing on device {:?}", name);
 
-    let mut cap = Capture::from_device(name)
-        .unwrap()
-        .timeout(1)
-        .promisc(true)
-        // .snaplen(5000)
-        .open()
-        .unwrap();
+    let use_pcap = false;
+
+    if use_pcap {
+        let mut cap = Capture::from_device(name)
+            .unwrap()
+            .timeout(1)
+            .promisc(true)
+            // .snaplen(5000)
+            .open()
+            .unwrap();
+
+        match cap.next_packet() {
+            Ok(packet) => {
+                let header = packet.header;
+                if header.caplen != header.len {
+                    println!(
+                        "Warning bad packet.. len {}: caplen: {}, header len: {}",
+                        packet.len(),
+                        header.caplen,
+                        header.len
+                    );
+                }
+
+                // .ts
+
+                let ether = EthernetPacket::new(&packet).unwrap();
+                handle_ethernet_packet(&ether, &tx);
+            }
+            Err(_) => {
+                // println!("Error! {:?}", e);
+            }
+        }
+        return;
+    }
 
     // does a bpf filter
     // cap.filter(&"udp").unwrap();80
@@ -94,28 +121,6 @@ pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
 
     // process packets
     loop {
-        // match cap.next_packet() {
-        //     Ok(packet) => {
-        //         let header = packet.header;
-        //         if header.caplen != header.len {
-        //             println!(
-        //                 "Warning bad packet.. len {}: caplen: {}, header len: {}",
-        //                 packet.len(),
-        //                 header.caplen,
-        //                 header.len
-        //             );
-        //         }
-
-        //         // .ts
-
-        //         let ether = EthernetPacket::new(&packet).unwrap();
-        //         handle_ethernet_packet(&ether, &tx);
-        //     }
-        //     Err(_) => {
-        //         // println!("Error! {:?}", e);
-        //     }
-        // }
-
         match iter.next() {
             Ok(packet) => {
                 let ether = EthernetPacket::new(packet).unwrap();

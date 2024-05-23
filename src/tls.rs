@@ -113,21 +113,6 @@ fn highest_version(highest: u16, versions: &Vec<TlsVersion>) -> u16 {
     highest
 }
 
-fn is_tls13(_content: &TlsServerHelloContents, extensions: &Vec<TlsExtension>) -> bool {
-    // look extensions, find the TlsSupportedVersion
-    extensions
-        .iter()
-        .find(|&ext| TlsExtensionType::SupportedVersions == ext.into())
-        .map(|ref ext| {
-            if let TlsExtension::SupportedVersions(ref versions) = ext {
-                versions.len() == 1 && versions[0] == TlsVersion::Tls13
-            } else {
-                false
-            }
-        })
-        .unwrap_or(false)
-}
-
 /// SSLVersion,Cipher,SSLExtension,EllipticCurve,EllipticCurvePointFormat
 pub fn build_ja3_fingerprint(
     content: &TlsClientHelloContents,

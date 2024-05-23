@@ -3,6 +3,7 @@ use websocket::sender::Writer;
 use websocket::sync::Server;
 
 use std::net::TcpStream;
+use std::os::unix::process;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -95,8 +96,8 @@ fn main() {
 
     // runs packet capture in its thread
     // thread::spawn(move || cap(tx, &args));
-    cap(tx, &args)
     // cap(tx)
+    cap(tx, &args)
 }
 
 fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {

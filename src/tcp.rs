@@ -24,10 +24,15 @@ use super::tls::{process_client_hello, process_server_hello};
 
 #[derive(Debug, Clone)]
 pub struct ConnStat {
+    /// Highest client version
     client_tls_version: u16,
-    client_time: Instant,
+    /// Client Hello time
+    pub client_time: Instant,
+    /// Highest server version
     server_tls_version: u16,
-    server_time: Instant,
+    /// Server Hello time
+    pub server_time: Instant,
+
     time_to_application_data: Duration,
     pub sni: Option<String>,
     pub ja3: Option<String>,
