@@ -1,12 +1,10 @@
 use std::cmp;
-use tls_parser::{parse_tls_extensions, TlsExtension, TlsVersion};
+use tls_parser::{parse_tls_extensions, TlsClientHelloContents, TlsExtension, TlsVersion};
+use tls_parser::{TlsExtensionType, TlsServerHelloContents};
 
 use itertools::Itertools;
 
 use md5;
-
-use tls_parser::tls::*;
-use tls_parser::tls_extensions::*;
 
 const JA3: bool = true;
 

@@ -37,7 +37,7 @@ pub struct Prober {
     trace_routes: HashMap<IpAddr, Traceroute>,
 
     // map all addresses - look up individual nodes, gather ttl, avg loss, rtt
-    prober: IcmpProber, // transport implementation
+    prober: Option<IcmpProber>, // transport implementation
 
     // callback: Box<FnMut()>,
     tx: Option<Sender<OwnedMessage>>,
@@ -54,7 +54,7 @@ impl Prober {
         Prober {
             outgoing_probes: Default::default(),
             trace_routes: Default::default(),
-            prober: IcmpProber::setup().unwrap(),
+            prober: IcmpProber::setup(),
             tx: None,
         }
     }
@@ -82,7 +82,7 @@ impl Prober {
         // register probe
         let probe = Probe::new(addr, ttl);
         let key = probe.outgoing_key().clone();
-        self.prober.ping_with_ttl(probe);
+        self.prober.as_mut().unwrap().ping_with_ttl(probe);
         self.outgoing_probes.insert(key, probe);
     }
 
@@ -95,7 +95,7 @@ impl Prober {
                 probe.ttl, probe.addr, source
             );
 
-            let tx = &self.tx;
+            let tx: &Option<Sender<OwnedMessage>> = &self.tx;
 
             // add results
             self.trace_routes.get_mut(&probe.addr).map(|trace| {

@@ -17,14 +17,22 @@ use super::{parse_dns, reverse_lookup};
 use super::parse_tcp_payload;
 use super::{handle_echo_reply, handle_time_exceeded};
 
+use std::borrow::BorrowMut;
+use std::io::Read;
 use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
 
 use crossbeam::channel::Sender;
 
+use crate::tcp::is_handshake_packet;
 use crate::{quic, Args};
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
+
+lazy_static! {
+    pub static ref BUFFER: Arc<Mutex<Vec<u8>>> = Default::default();
+}
 
 pub fn is_local(ip: IpAddr) -> bool {
     let interfaces = pnet::datalink::interfaces();
@@ -61,7 +69,7 @@ pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
         .unwrap();
 
     // does a bpf filter
-    // cap.filter(&"udp").unwrap();
+    // cap.filter(&"udp").unwrap();80
 
     use pnet::datalink::Channel::Ethernet;
 
@@ -86,6 +94,28 @@ pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
 
     // process packets
     loop {
+        // match cap.next_packet() {
+        //     Ok(packet) => {
+        //         let header = packet.header;
+        //         if header.caplen != header.len {
+        //             println!(
+        //                 "Warning bad packet.. len {}: caplen: {}, header len: {}",
+        //                 packet.len(),
+        //                 header.caplen,
+        //                 header.len
+        //             );
+        //         }
+
+        //         // .ts
+
+        //         let ether = EthernetPacket::new(&packet).unwrap();
+        //         handle_ethernet_packet(&ether, &tx);
+        //     }
+        //     Err(_) => {
+        //         // println!("Error! {:?}", e);
+        //     }
+        // }
+
         match iter.next() {
             Ok(packet) => {
                 let ether = EthernetPacket::new(packet).unwrap();
@@ -237,6 +267,7 @@ fn handle_tcp_packet(
     tx: &Sender<PacketInfo>,
 ) {
     let tcp = TcpPacket::new(packet);
+
     if let Some(tcp) = tcp {
         if DEBUG {
             println!(
@@ -286,12 +317,41 @@ fn handle_tcp_packet(
             t: crate::structs::PacketType::Tcp,
         };
 
+        println!("tcp: {:?} {:0b}", packet_info, tcp.get_flags());
+
         tx.send(packet_info).unwrap();
 
         // strip tcp headers
         let packet = tcp.payload();
 
-        parse_tcp_payload(packet, &key);
+        let is_handshake = is_handshake_packet(packet);
+        // The PSH bit is the 4th bit in the TCP flags byte
+        let push_bit = (tcp.get_flags() & 0x08) != 0;
+        let mut prev = BUFFER.lock().unwrap();
+
+        if is_handshake {
+            if push_bit {
+                // ready to parse
+                parse_tcp_payload(packet, &key);
+                return;
+            }
+
+            println!("needs assembly...");
+
+            // append to buffer
+            prev.extend_from_slice(packet);
+        } else {
+            if !prev.is_empty() {
+                // reassemble handshake
+                println!("reassembling...");
+                prev.extend_from_slice(packet);
+            }
+
+            if push_bit {
+                parse_tcp_payload(&prev[..], &key);
+                prev.clear();
+            }
+        }
     } else {
         println!("[{}]: Malformed TCP Packet", interface_name);
     }

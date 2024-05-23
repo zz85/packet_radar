@@ -27,6 +27,13 @@ pub struct ConnStat {
     server_tls_version: u16,
     server_time: Instant,
     time_to_application_data: Duration,
+    // TODO combine ConnectionMeta
+    // associate dns quries
+    // PIDs
+    // client hello
+    // Sni
+    // JA3/JA4
+    // socket info
 }
 
 #[derive(Debug, Clone)]
@@ -116,7 +123,15 @@ impl TcpStats {
     }
 }
 
+pub fn is_handshake_packet(packet: &[u8]) -> bool {
+    packet.len() > 4 // heuristics
+    && packet[0] == 0x16
+}
+
 pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
+    if !is_handshake_packet(packet) {
+        return None;
+    }
     // if packet.len() > 4 {
     //     if packet[0] == 0x17 {
     //         return;
@@ -130,8 +145,11 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
 
     // TODO skip to the end of TCP header
 
+    println!("CH: {:0x?}", packet);
+
     let v = parse_tls_plaintext(&packet)
         .map_err(|e| {
+            println!("Cannot parse {e:?}");
             // cannot parse
             e
         })
