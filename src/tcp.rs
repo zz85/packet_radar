@@ -12,6 +12,8 @@ lazy_static! {
 
 const TLS_STATS: bool = false;
 
+use crate::tls::ClientHello;
+
 use super::tls::{process_client_hello, process_server_hello};
 
 // IP Fragmentation
@@ -20,13 +22,16 @@ use super::tls::{process_client_hello, process_server_hello};
 // https://tools.ietf.org/html/rfc815
 // https://packetpushers.net/ip-fragmentation-in-detail/
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct ConnStat {
     client_tls_version: u16,
     client_time: Instant,
     server_tls_version: u16,
     server_time: Instant,
     time_to_application_data: Duration,
+    pub sni: Option<String>,
+    pub ja3: Option<String>,
+    pub ja4: Option<String>,
     // TODO combine ConnectionMeta
     // associate dns quries
     // PIDs
@@ -38,7 +43,7 @@ pub struct ConnStat {
 
 #[derive(Debug, Clone)]
 pub struct TcpStats {
-    conn_map: DashMap<String, ConnStat>,
+    pub conn_map: DashMap<String, ConnStat>,
 }
 
 impl Default for TcpStats {
@@ -54,20 +59,19 @@ impl TcpStats {
         }
     }
 
-    pub fn get_or_create_conn<'a>(&'a self, key: String) -> Option<RefMut<'a, String, ConnStat>> {
-        if !self.conn_map.contains_key(&key) {
-            let stat = ConnStat {
-                client_tls_version: 0,
-                server_tls_version: 0,
-                client_time: Instant::now(),
-                server_time: Instant::now(),
-                time_to_application_data: Duration::new(0, 0),
-            };
+    pub fn get_or_create_conn<'a>(&'a self, key: String) -> RefMut<'a, String, ConnStat> {
+        let entry = self.conn_map.entry(key).or_insert_with(|| ConnStat {
+            client_tls_version: 0,
+            server_tls_version: 0,
+            client_time: Instant::now(),
+            server_time: Instant::now(),
+            time_to_application_data: Duration::new(0, 0),
+            sni: None,
+            ja3: None,
+            ja4: None,
+        });
 
-            self.conn_map.insert(key.clone(), stat);
-        }
-
-        self.conn_map.get_mut(&key)
+        entry
     }
 
     pub fn count(&self) {
@@ -126,6 +130,7 @@ impl TcpStats {
 pub fn is_handshake_packet(packet: &[u8]) -> bool {
     packet.len() > 4 // heuristics
     && packet[0] == 0x16
+    && packet[1] == 0x03
 }
 
 pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
@@ -143,9 +148,8 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
     //     // 17 3 3 0 Application Data, TLS 1.2
     // }
 
-    // TODO skip to the end of TCP header
-
-    println!("CH: {:0x?}", packet);
+    // println!("CH: {:0x?}", packet);
+    println!("TLS payload: {} bytes", packet.len());
 
     let v = parse_tls_plaintext(&packet)
         .map_err(|e| {
@@ -161,7 +165,6 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
         // println!("msg {:?}", m);
         // Handshake(ClientKeyExchange)
         // Alert(TlsMessageAlert
-        // Handshake(ClientHello(TlsClientHelloContents
 
         match m {
             TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) => {
@@ -169,7 +172,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
 
                 // get connection
                 let tcp_stats = &TCP_STATS;
-                let mut conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+                let mut conn = tcp_stats.get_or_create_conn(key.to_owned());
                 conn.client_tls_version = ch.version;
                 conn.client_time = Instant::now();
 
@@ -179,6 +182,9 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
                     TlsVersion(ch.version),
                     ch
                 );
+                conn.ja3 = ch.ja3;
+                conn.ja4 = ch.ja4;
+                conn.sni = Some(ch.sni);
 
                 tcp_stats.count();
             }
@@ -187,7 +193,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
 
                 // get connection
                 let tcp_stats = &TCP_STATS;
-                let mut conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+                let mut conn = tcp_stats.get_or_create_conn(key.to_owned());
                 conn.server_tls_version = highest;
                 conn.server_time = Instant::now();
                 println!(
@@ -216,7 +222,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
     if plain_text.hdr.record_type == TlsRecordType::ApplicationData {
         // println!("Application Data {:?}", app_data);
         let tcp_stats = &TCP_STATS;
-        let mut conn = tcp_stats.get_or_create_conn(key.to_owned()).unwrap();
+        let mut conn = tcp_stats.get_or_create_conn(key.to_owned());
 
         if conn.time_to_application_data == Duration::new(0, 0)
         // TODO probably need to check outgoing app data vs incoming app data

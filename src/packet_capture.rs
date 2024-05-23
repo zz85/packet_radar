@@ -34,11 +34,11 @@ lazy_static! {
     pub static ref BUFFER: Arc<Mutex<Vec<u8>>> = Default::default();
 }
 
-pub fn is_local(ip: IpAddr) -> bool {
+pub fn is_local(ip: &IpAddr) -> bool {
     let interfaces = pnet::datalink::interfaces();
     for interface in interfaces {
         for ipnet in interface.ips {
-            if ipnet.ip() == ip {
+            if ipnet.ip() == *ip {
                 return true;
             }
         }
@@ -284,7 +284,7 @@ fn handle_tcp_packet(
         // generate a key is uniquely id the 5 tuple
         // instead of is_local(), source < destination is
         // a hack to generate unique
-        let key = match is_local(source) {
+        let key = match is_local(&source) {
             true => format!(
                 "tcp_{}:{}_{}:{}",
                 source,
@@ -301,8 +301,6 @@ fn handle_tcp_packet(
             ),
         };
 
-        // tcp.get_source()
-        // tcp.get_destination()
         // tcp.get_acknowledgement()
         // get_sequence
         // options raw
@@ -317,7 +315,7 @@ fn handle_tcp_packet(
             t: crate::structs::PacketType::Tcp,
         };
 
-        println!("tcp: {:?} {:0b}", packet_info, tcp.get_flags());
+        // println!("tcp: {:?} {:0b}", packet_info, tcp.get_flags());
 
         tx.send(packet_info).unwrap();
 
@@ -336,18 +334,18 @@ fn handle_tcp_packet(
                 return;
             }
 
-            println!("needs assembly...");
-
             // append to buffer
             prev.extend_from_slice(packet);
         } else {
-            if !prev.is_empty() {
-                // reassemble handshake
-                println!("reassembling...");
-                prev.extend_from_slice(packet);
+            if prev.is_empty() {
+                return;
             }
 
-            if push_bit {
+            // reassemble handshake
+            prev.extend_from_slice(packet);
+
+            if push_bit || prev.len() > 48000 {
+                // if push bit is set, or buffer reaches 512KB, parse and flush
                 parse_tcp_payload(&prev[..], &key);
                 prev.clear();
             }

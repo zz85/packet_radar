@@ -236,7 +236,7 @@ pub fn build_ja4_fingerprint(
         .join(",");
     // println!("nr_ciphers: {nr_ciphers} {:?}", ciphers);
 
-    let x = extensions
+    let sig_algs = extensions
         .iter()
         .filter_map(|x| match x {
             TlsExtension::SignatureAlgorithms(sig_alg) => Some(
@@ -250,8 +250,9 @@ pub fn build_ja4_fingerprint(
         })
         .collect::<Vec<_>>();
 
-    let sig_alg = x.first().unwrap();
-    let opt_underscore = if sig_alg.is_empty() { "" } else { "_" };
+    let default_string = "".to_owned();
+    let sig_alg = sig_algs.first().unwrap_or(&default_string);
+    let opt_underscore = if sig_algs.is_empty() { "" } else { "_" };
 
     // println!("{sig_alg:?}");
 

@@ -5,6 +5,7 @@ use libproc::libproc::proc_pid;
 use std::{cmp, net::IpAddr, sync::Arc};
 
 use crate::socket::{get_processes, SockInfo, SockType};
+use crate::tcp::ConnStat;
 use hdrhistogram::Histogram;
 use pretty_bytes::converter::convert;
 
@@ -65,7 +66,7 @@ fn unique_tuple(tuple: (String, u16, String, u16)) -> (String, u16, String, u16)
     }
 }
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -166,7 +167,7 @@ impl ConnectionTracker {
 
         // Populate connections
         let conn_meta = self.connections.entry(keyed_tuple).or_insert_with(|| {
-            let info = match is_local(src) {
+            let info = match is_local(&src) {
                 true => SockInfo {
                     proto,
                     local_addr: src,
@@ -267,10 +268,42 @@ impl ConnectionTracker {
             });
         println!("----------");
 
+        let conns_meta = crate::tcp::TCP_STATS.clone();
+
+        let mut process_fingerprint: HashMap<&str, HashSet<String>> = Default::default();
+
+        self.connections
+            .iter()
+            .for_each(|((src, sport, dst, dport), meta)| {
+                let key = match is_local(&meta.info.local_addr) {
+                    true => format!("tcp_{src}:{sport}_{dst}:{dport}"),
+                    false => format!("tcp_{dst}:{dport}_{src}:{sport}"),
+                };
+
+                let pid_info = meta.info.pid.and_then(|pid| self.pid_cache.get(&pid));
+
+                match (pid_info, conns_meta.conn_map.get(&key)) {
+                    (Some(pid_info), Some(conn)) => {
+                        let set = process_fingerprint
+                            .entry(pid_info.name.as_str())
+                            .or_default();
+                        set.insert(conn.ja4.clone().unwrap_or_default());
+                    }
+                    _ => {}
+                }
+            });
+
+        // Fingerprints: {"com.apple.WebKit.Networking": {"t13d2014h2_a09f3c656075_14788d8d241b", "", "t13d2014h1_a09f3c656075_14788d8d241b"}, "wget": {"t13d691100_8b2139ff7677_4a0154eed145"}, "firefox": {"t13d1715h2_5b57614c22b0_7121afd63204", "t13d1715h1_5b57614c22b0_7121afd63204", "t00d1410h2_c866b44c5a26_b5b8faed2b99"}, "Microsoft Update Assistant": {"t13d1314h2_f57a46bbacb6_14788d8d241b"}, "Microsoft PowerPoint": {"t13d2014h2_a09f3c656075_14788d8d241b"}, "Google Chrome Helper": {"t13d1517h2_8daaf6152771_b0da82dd1658", "", "t13d1516h2_8daaf6152771_02713d6af862"}, "curl": {"t13d1812h2_e8a523a41297_3d739a8c35e1"}, "Slack Helper": {"t13d1517h2_8daaf6152771_b0da82dd1658"}, "Safari": {"t13d2014h2_a09f3c656075_14788d8d241b"}, "itunescloudd": {"t13d2014h2_a09f3c656075_14788d8d241b"}, "parsecd": {"t13d2015h2_a09f3c656075_3d00e4afe3b1"}}
+        println!("Fingerprints: {process_fingerprint:?}");
+
+        println!("----------");
+
         println!("Out");
         self.out_bytes.stats();
         println!("In");
         self.in_bytes.stats();
+
+        println!("----------");
     }
 
     /// get pids and process informations for all sockets

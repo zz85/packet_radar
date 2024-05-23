@@ -72,7 +72,7 @@ open `html/packet_viz.html` in your browser
 - [ ] Whois / What's my ip whatsmyip
 - [ ] SSL Key log decoding
 - [x] TLS Parsing and Fingerprinting
-   - [ ] Fingerprinting stats by processes
+   - [x] Fingerprinting stats by processes
    - [ ] TLS Stats
 - [-] Quic Packet Parsing
 - [ ] Sankey diagrams
