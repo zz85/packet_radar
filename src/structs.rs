@@ -8,7 +8,8 @@ pub struct PacketInfo {
     pub src_port: u16,
     pub dest_port: u16,
     pub t: PacketType, // type: t for tcp, u for udp
-                       // todo timestamp + id
+    // todo timestamp + id
+    pub pid: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

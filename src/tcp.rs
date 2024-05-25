@@ -7,6 +7,7 @@ use std::{
 };
 
 lazy_static! {
+    /// This is currently just TLS connections
     pub static ref TCP_STATS: TcpStats = Default::default();
 }
 

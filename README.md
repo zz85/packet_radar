@@ -56,6 +56,13 @@ open `html/packet_viz.html` in your browser
 - https://github.com/kpcyrd/sniffglue
 - https://github.com/imsnif/bandwhich
 
+
+### ChangeLog
+May 24, 2024 - Ability to read from pcap file or stdin (eg. sudo tcpdump -w - | sudo packet_radar -p -  ).
+On macs, tcpdump using pktap will provide process id information during packet capture.
+This method requires sudo, but for unprivileged users, the lsof method will be the fallback,
+
+
 ### IDEAs / TODO
 - [x] DNS resolution
 - [x] Find local addresses

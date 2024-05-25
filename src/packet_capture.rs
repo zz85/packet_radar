@@ -230,6 +230,7 @@ fn handle_udp_packet(
             dest_port: udp.get_destination(),
             src_port: udp.get_source(),
             t: crate::structs::PacketType::Udp,
+            pid: proc.map(|p| p.pid),
         };
 
         tx.send(packet_info).unwrap();
@@ -338,9 +339,10 @@ fn handle_tcp_packet(
             dest_port: tcp.get_destination(),
             src_port: tcp.get_source(),
             t: crate::structs::PacketType::Tcp,
+            pid: proc.map(|p| p.pid),
         };
 
-        println!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
+        // println!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
 
         tx.send(packet_info).unwrap();
 

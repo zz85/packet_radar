@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io::Read};
 
 use pcap_parser::traits::PcapReaderIterator;
 use pcap_parser::*;
@@ -11,6 +11,7 @@ use crate::{
     packet_capture::handle_ethernet_packet,
     structs::{PacketInfo, ProcInfo},
 };
+use std::io::{self, BufRead};
 
 const PCAPNG_PIB_NAME: u16 = 2; /* UTF-8 string with name of process */
 const PCAPNG_PIB_PATH: u16 = 3; /* UTF-8 string with path of process */
@@ -18,15 +19,26 @@ const PCAPNG_PIB_UUID: u16 = 4; /* 16 bytes of the process UUID */
 const PCAPNG_EPB_PIB_INDEX: u16 = 0x8001; /* 32 bits number of process information block within the section */
 
 pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
-    let file = File::open(path).unwrap();
+    if path == "-" {
+        let stdin = io::stdin();
+        let mut reader = PcapNGReader::new(65536, stdin).expect("PcapNGReader");
+        pcap_parse_with_reader(tx, &mut reader);
+    } else {
+        let file = File::open(path).unwrap();
+        let mut reader = PcapNGReader::new(65536, file).expect("PcapNGReader");
+        pcap_parse_with_reader(tx, &mut reader);
+    };
+}
+
+pub fn pcap_parse_with_reader<T: Read>(tx: Sender<PacketInfo>, reader: &mut PcapNGReader<T>) {
     let mut num_blocks = 0;
-    let mut reader = PcapNGReader::new(65536, file).expect("PcapNGReader");
+
     let mut if_linktypes = Vec::new();
     let mut last_incomplete_index = 0;
     let mut process_block_info = Vec::new();
 
     loop {
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        // std::thread::sleep(std::time::Duration::from_millis(10));
         match reader.next() {
             Ok((offset, block)) => {
                 num_blocks += 1;
@@ -134,6 +146,7 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
         }
     }
     println!("num_blocks: {}", num_blocks);
+    std::thread::sleep(std::time::Duration::from_millis(10000));
 }
 
 /*

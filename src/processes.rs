@@ -1,13 +1,18 @@
 use crossbeam::Receiver;
 
 use libproc::libproc::proc_pid;
+use sysinfo::Process;
 
+use std::borrow::Borrow;
 use std::{cmp, net::IpAddr, sync::Arc};
 
 use crate::socket::{get_processes, SockInfo, SockType};
-use crate::tcp::ConnStat;
 use hdrhistogram::Histogram;
 use pretty_bytes::converter::convert;
+
+lazy_static! {
+    pub static ref CONNECTIONS: Arc<RwLock<ConnectionTracker>> = Default::default();
+}
 
 /*
 
@@ -142,7 +147,8 @@ impl Default for Meter {
 }
 
 #[derive(Debug, Clone, Default)]
-struct ConnectionTracker {
+pub struct ConnectionTracker {
+    /// connections populated by packet info events
     connections: HashMap<(String, u16, String, u16), ConnectionMeta>,
     /// cached pids -> process meta infomation
     pid_cache: HashMap<u32, ProcessMeta>,
@@ -152,11 +158,18 @@ struct ConnectionTracker {
 }
 
 impl ConnectionTracker {
+    /// handles packet info event to build state of connections
     fn add_packet(&mut self, msg: PacketInfo) {
         let src = msg.src.parse::<IpAddr>().unwrap();
         let dst = msg.dest.parse::<IpAddr>().unwrap();
         let src_port = msg.src_port;
         let dst_port = msg.dest_port;
+        let pid = msg.pid;
+
+        if let Some(pid) = pid {
+            let meta = self.update_pid_cache(pid);
+            println!("{meta:?}");
+        }
 
         let proto = match msg.t {
             PacketType::Tcp => SockType::TCP,
@@ -174,7 +187,7 @@ impl ConnectionTracker {
                     local_port: src_port,
                     remote_addr: dst,
                     remote_port: dst_port,
-                    pid: None,
+                    pid,
                     state: None,
                 },
                 false => SockInfo {
@@ -183,7 +196,7 @@ impl ConnectionTracker {
                     local_port: dst_port,
                     remote_addr: src,
                     remote_port: src_port,
-                    pid: None,
+                    pid,
                     state: None,
                 },
             };
@@ -268,8 +281,6 @@ impl ConnectionTracker {
             });
         println!("----------");
 
-        let conns_meta = crate::tcp::TCP_STATS.clone();
-
         #[derive(Default, Debug)]
         struct ProcStats {
             rtt: Duration,
@@ -279,6 +290,9 @@ impl ConnectionTracker {
             sni: HashSet<String>,
         }
         let mut process_fingerprint: HashMap<&str, ProcStats> = Default::default();
+
+        // reference TCP stats
+        let conns_meta = crate::tcp::TCP_STATS.clone();
 
         self.connections
             .iter()
@@ -332,6 +346,39 @@ impl ConnectionTracker {
         println!("----------");
     }
 
+    // fetch and insert into cache
+    fn update_pid_cache(&mut self, pid: u32) -> &ProcessMeta {
+        // update pid cache
+        self.pid_cache.entry(pid).or_insert_with(|| {
+            let process_path = match proc_pid::pidpath(pid as i32) {
+                Ok(name) => name,
+                Err(_) => " - ".to_owned(),
+            };
+
+            let name = match proc_pid::name(pid as i32) {
+                Ok(name) => name,
+                // for root processes, name may not be found but process path might
+                Err(_) => process_path
+                    .split('/')
+                    .into_iter()
+                    .last()
+                    .map(|v| v.to_owned())
+                    .unwrap_or_default(),
+            };
+
+            let meta = ProcessMeta {
+                pid,
+                name,
+                process_path,
+                ..Default::default()
+            };
+
+            meta
+        });
+
+        self.pid_cache.get(&pid).unwrap()
+    }
+
     /// get pids and process informations for all sockets
     fn update_pid_info(&mut self) {
         let sockets = get_processes_and_sockets();
@@ -341,27 +388,8 @@ impl ConnectionTracker {
 
         sockets.into_iter().for_each(|sock| {
             let pid = sock.pid.unwrap();
-            // update pid cache
-            self.pid_cache.entry(pid).or_insert_with(|| {
-                let name = match proc_pid::name(pid as i32) {
-                    Ok(name) => name,
-                    Err(_) => " - ".to_owned(),
-                };
 
-                let process_path = match proc_pid::pidpath(pid as i32) {
-                    Ok(name) => name,
-                    Err(_) => " - ".to_owned(),
-                };
-
-                let meta = ProcessMeta {
-                    pid,
-                    name,
-                    process_path,
-                    ..Default::default()
-                };
-
-                meta
-            });
+            self.update_pid_cache(pid);
 
             // if 4 tuple is found, update pid information
             self.connections
@@ -396,8 +424,9 @@ impl ConnectionMeta {
 
 pub fn start_monitoring(rx: Receiver<PacketInfo>) {
     // TODO move these into a single protected struct and avoid unwraps!
-    let connections: Arc<RwLock<ConnectionTracker>> = Default::default();
-    let connections_on_packet = connections.clone();
+    // let connections: Arc<RwLock<ConnectionTracker>> = Default::default();
+
+    let connections_on_packet = CONNECTIONS.clone();
 
     // Update connection tracker based on packets received
     thread::spawn(move || {
@@ -416,13 +445,13 @@ pub fn start_monitoring(rx: Receiver<PacketInfo>) {
     //     thread::sleep(Duration::from_millis(3000));
     // });
 
-    let connections_for_pids = connections.clone();
+    let connections_for_pids = CONNECTIONS.clone();
     thread::spawn(move || loop {
         connections_for_pids.write().unwrap().update_pid_info();
         thread::sleep(Duration::from_millis(1000));
     });
 
-    let top_processes = connections.clone();
+    let top_processes = CONNECTIONS.clone();
     thread::spawn(move || loop {
         top_processes.read().unwrap().top();
 
