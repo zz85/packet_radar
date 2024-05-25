@@ -30,3 +30,9 @@ pub struct ClientRequest {
 fn default_type() -> String {
     "".to_string()
 }
+
+#[derive(Default, Debug)]
+pub struct ProcInfo {
+    pub pid: u32,
+    pub name: Option<String>,
+}

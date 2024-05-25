@@ -1,15 +1,23 @@
 use std::convert::TryFrom;
 
+use pcap_parser::traits::PcapReaderIterator;
+use pcap_parser::*;
+use std::fs::File;
+
 use crossbeam::Sender;
 use pnet::packet::ethernet::EthernetPacket;
 
-use crate::{packet_capture::handle_ethernet_packet, structs::PacketInfo};
+use crate::{
+    packet_capture::handle_ethernet_packet,
+    structs::{PacketInfo, ProcInfo},
+};
+
+const PCAPNG_PIB_NAME: u16 = 2; /* UTF-8 string with name of process */
+const PCAPNG_PIB_PATH: u16 = 3; /* UTF-8 string with path of process */
+const PCAPNG_PIB_UUID: u16 = 4; /* 16 bytes of the process UUID */
+const PCAPNG_EPB_PIB_INDEX: u16 = 0x8001; /* 32 bits number of process information block within the section */
 
 pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
-    use pcap_parser::traits::PcapReaderIterator;
-    use pcap_parser::*;
-    use std::fs::File;
-
     let file = File::open(path).unwrap();
     let mut num_blocks = 0;
     let mut reader = PcapNGReader::new(65536, file).expect("PcapNGReader");
@@ -17,17 +25,10 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
     let mut last_incomplete_index = 0;
     let mut process_block_info = Vec::new();
 
-    #[derive(Default, Debug)]
-    struct ProcInfo {
-        pid: u32,
-        name: Option<String>,
-    }
-
     loop {
         std::thread::sleep(std::time::Duration::from_millis(10));
         match reader.next() {
             Ok((offset, block)) => {
-                println!("got new block");
                 num_blocks += 1;
                 match block {
                     PcapBlockOwned::NG(Block::ProcessInformation(ref proc)) => {
@@ -40,19 +41,19 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
                             // println!("code: {} [{}]", option.code.0, option.len);
 
                             match option.code.0 {
-                                2 => {
+                                PCAPNG_PIB_NAME => {
                                     // process name
                                     let name = std::str::from_utf8(option.value())
-                                        .map(|v| v.to_owned())
-                                        .ok();
+                                        .ok()
+                                        .map(|v| v.trim_matches(char::from(0)).to_owned());
                                     info.name = name;
                                 }
-                                3 => {
+                                PCAPNG_PIB_PATH => {
                                     // process path
                                     // let value = std::str::from_utf8(option.value());
                                     // println!("{value:?}");
                                 }
-                                4 => {
+                                PCAPNG_PIB_UUID => {
                                     // 16 bytes uuid
                                     // println!("16 bytes value: {:?}", option.value());
                                 }
@@ -68,13 +69,13 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
                         process_block_info.push(info);
                     }
                     PcapBlockOwned::NG(Block::SectionHeader(ref _shb)) => {
-                        println!("SectionHeader {_shb:?}");
+                        // println!("SectionHeader {_shb:?}");
                         // starting a new section, clear known interfaces
                         if_linktypes = Vec::new();
                         process_block_info = Vec::new();
                     }
                     PcapBlockOwned::NG(Block::InterfaceDescription(ref idb)) => {
-                        println!("InterfaceDescription {idb:?}");
+                        // println!("InterfaceDescription {idb:?}");
                         if_linktypes.push(idb.linktype);
                     }
                     PcapBlockOwned::NG(Block::EnhancedPacket(ref epb)) => {
@@ -82,7 +83,7 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
 
                         let mut process = None;
                         for option in &epb.options {
-                            if option.code.0 == 0x8001 {
+                            if option.code.0 == PCAPNG_EPB_PIB_INDEX {
                                 let pid = <[u8; 4]>::try_from(option.value())
                                     .ok()
                                     .map(u32::from_le_bytes);
@@ -98,8 +99,8 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
                         let linktype = if_linktypes[epb.if_id as usize];
 
                         let ether = EthernetPacket::new(&epb.data).unwrap();
-                        println!("pid: {process:?}");
-                        handle_ethernet_packet(&ether, &tx);
+                        // println!("pid: {process:?}");
+                        handle_ethernet_packet(&ether, &tx, process);
 
                         // let res = pcap_parser::data::get_packetdata(
                         //     epb.data,
@@ -108,12 +109,7 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
                         // );
                     }
                     PcapBlockOwned::NG(Block::SimplePacket(ref spb)) => {
-                        println!("simple packet {spb:?}");
-                        assert!(if_linktypes.len() > 0);
-                        let linktype = if_linktypes[0];
-                        let blen = (spb.block_len1 - 16) as usize;
-                        #[cfg(feature = "data")]
-                        let res = pcap_parser::data::get_packetdata(spb.data, linktype, blen);
+                        // this is practical not used
                     }
                     PcapBlockOwned::NG(_) => {
                         // can be statistics (ISB), name resolution (NRB), etc.
@@ -151,19 +147,9 @@ pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
      shows the IDs used for the process information section. how interests are
      PCAPNG_PIB_NAME - proc_info->proc_name
      PCAPNG_PIB_UUID - proc_info->proc_uuid
-     #define	PCAPNG_PIB_NAME			2	/* UTF-8 string with name of process */
-     #define	PCAPNG_PIB_PATH			3	/* UTF-8 string with path of process */
-     #define	PCAPNG_PIB_UUID			4	/* 16 bytes of the process UUID */
 
      pcap_ng_dump_proc_info
      https://github.com/apple-opensource/libpcap/blob/dc199b42a8206254d1705d5612f7b26414252152/libpcap/pcap-darwin.c#L737
      pcap_ng_dump_proc - responsible for writing the process info block
      pcap_ng_dump_pktap_v2 - dumps pktap
-
-     pcap_proc_info_set_add_uuid
-
-     PCAPNG_EPB_PIB_INDEX
-     PCAPNG_EPB_E_PIB_INDEX
-
-     pcap_ng_dump_pktap
 */

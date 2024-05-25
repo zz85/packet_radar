@@ -110,7 +110,7 @@ pub fn cap(tx: Sender<PacketInfo>) {
                 // .ts
 
                 let ether = EthernetPacket::new(&packet).unwrap();
-                handle_ethernet_packet(&ether, &tx);
+                handle_ethernet_packet(&ether, &tx, None);
             }
             Err(_) => {
                 // println!("Error! {:?}", e);

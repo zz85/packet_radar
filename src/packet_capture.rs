@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex};
 
 use crossbeam::channel::Sender;
 
+use crate::structs::ProcInfo;
 use crate::tcp::is_handshake_packet;
 use crate::{quic, Args};
 
@@ -72,7 +73,7 @@ fn pnet_capture(tx: Sender<PacketInfo>, name: &str) {
         match iter.next() {
             Ok(packet) => {
                 let ether = EthernetPacket::new(packet).unwrap();
-                handle_ethernet_packet(&ether, &tx);
+                handle_ethernet_packet(&ether, &tx, None);
             }
             Err(e) => panic!("packetdump: unable to receive packet: {}", e),
         }
@@ -100,7 +101,7 @@ fn pcap(tx: Sender<PacketInfo>, name: &str) {
                 );
             }
             let ether = EthernetPacket::new(&packet).unwrap();
-            handle_ethernet_packet(&ether, &tx);
+            handle_ethernet_packet(&ether, &tx, None);
         }
         Err(_) => {
             // println!("Error! {:?}", e);
@@ -134,17 +135,22 @@ pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
     // traceroute::test_traceroute();
 }
 
-pub(crate) fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<PacketInfo>) {
+pub(crate) fn handle_ethernet_packet(
+    ether: &EthernetPacket,
+    tx: &Sender<PacketInfo>,
+    proc: Option<&ProcInfo>,
+) {
     let ether_type = ether.get_ethertype();
+    let iface = "meow";
 
     match ether_type {
         EtherTypes::Ipv4 => {
-            print!("IPV4 ");
-            handle_ipv4_packet("meow", &ether, &tx);
+            // print!("IPV4 ");
+            handle_ipv4_packet(iface, &ether, &tx, proc);
         }
         EtherTypes::Ipv6 => {
-            print!("IPV6 ");
-            handle_ipv6_packet("woof", &ether, &tx);
+            // print!("IPV6 ");
+            handle_ipv6_packet(iface, &ether, &tx, proc);
         }
         EtherTypes::Arp => {
             // println!("ARP");
@@ -160,7 +166,12 @@ pub(crate) fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<PacketI
     }
 }
 
-fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<PacketInfo>) {
+fn handle_ipv4_packet(
+    interface_name: &str,
+    ethernet: &EthernetPacket,
+    tx: &Sender<PacketInfo>,
+    proc: Option<&ProcInfo>,
+) {
     let header = Ipv4Packet::new(ethernet.payload());
     if let Some(header) = header {
         // println!("TTL {}", header.get_ttl());
@@ -172,13 +183,19 @@ fn handle_ipv4_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Send
             header.get_next_level_protocol(),
             header.payload(),
             tx,
+            proc,
         );
     } else {
         println!("[{}]: Malformed IPv4 Packet", interface_name);
     }
 }
 
-fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Sender<PacketInfo>) {
+fn handle_ipv6_packet(
+    interface_name: &str,
+    ethernet: &EthernetPacket,
+    tx: &Sender<PacketInfo>,
+    proc: Option<&ProcInfo>,
+) {
     let header = Ipv6Packet::new(ethernet.payload());
     if let Some(header) = header {
         handle_transport_protocol(
@@ -188,6 +205,7 @@ fn handle_ipv6_packet(interface_name: &str, ethernet: &EthernetPacket, tx: &Send
             header.get_next_header(),
             header.payload(),
             tx,
+            proc,
         );
     } else {
         println!("[{}]: Malformed IPv6 Packet", interface_name);
@@ -200,6 +218,7 @@ fn handle_udp_packet(
     destination: IpAddr,
     packet: &[u8],
     tx: &Sender<PacketInfo>,
+    proc: Option<&ProcInfo>,
 ) {
     let udp = UdpPacket::new(packet);
 
@@ -270,6 +289,7 @@ fn handle_tcp_packet(
     destination: IpAddr,
     packet: &[u8],
     tx: &Sender<PacketInfo>,
+    proc: Option<&ProcInfo>,
 ) {
     let tcp = TcpPacket::new(packet);
 
@@ -320,7 +340,7 @@ fn handle_tcp_packet(
             t: crate::structs::PacketType::Tcp,
         };
 
-        println!("tcp: {:?} {:0b}", packet_info, tcp.get_flags());
+        println!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
 
         tx.send(packet_info).unwrap();
 
@@ -367,19 +387,20 @@ fn handle_transport_protocol(
     protocol: IpNextHeaderProtocol,
     packet: &[u8],
     tx: &Sender<PacketInfo>,
+    proc: Option<&ProcInfo>,
 ) {
-    println!(
-        "Protocol: {}, Source: {}, Destination: {} ({})",
-        protocol, source, destination, protocol
-    );
+    // println!(
+    //     "Protocol: {}, Source: {}, Destination: {} ({})",
+    //     protocol, source, destination, protocol
+    // );
 
     match protocol {
         IpNextHeaderProtocols::Udp => {
-            handle_udp_packet(interface_name, source, destination, packet, tx)
+            handle_udp_packet(interface_name, source, destination, packet, tx, proc)
         }
         IpNextHeaderProtocols::Tcp => {
             if CAPTURE_TCP {
-                handle_tcp_packet(interface_name, source, destination, packet, tx)
+                handle_tcp_packet(interface_name, source, destination, packet, tx, proc)
             }
         }
         IpNextHeaderProtocols::Icmp => {
