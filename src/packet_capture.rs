@@ -17,8 +17,6 @@ use super::{parse_dns, reverse_lookup};
 use super::parse_tcp_payload;
 use super::{handle_echo_reply, handle_time_exceeded};
 
-use std::borrow::BorrowMut;
-use std::io::Read;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 
@@ -47,57 +45,7 @@ pub fn is_local(ip: &IpAddr) -> bool {
     return false;
 }
 
-pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
-    println!("Running pcap...");
-    println!("Devices {:?}", Device::list());
-
-    let device = Device::lookup().unwrap().unwrap();
-    println!("Default device {:?}", device);
-
-    let name = device.name.as_str();
-    // "any";
-    // "lo0";
-
-    println!("Capturing on device {:?}", name);
-
-    let use_pcap = false;
-
-    if use_pcap {
-        let mut cap = Capture::from_device(name)
-            .unwrap()
-            .timeout(1)
-            .promisc(true)
-            // .snaplen(5000)
-            .open()
-            .unwrap();
-
-        match cap.next_packet() {
-            Ok(packet) => {
-                let header = packet.header;
-                if header.caplen != header.len {
-                    println!(
-                        "Warning bad packet.. len {}: caplen: {}, header len: {}",
-                        packet.len(),
-                        header.caplen,
-                        header.len
-                    );
-                }
-
-                // .ts
-
-                let ether = EthernetPacket::new(&packet).unwrap();
-                handle_ethernet_packet(&ether, &tx);
-            }
-            Err(_) => {
-                // println!("Error! {:?}", e);
-            }
-        }
-        return;
-    }
-
-    // does a bpf filter
-    // cap.filter(&"udp").unwrap();80
-
+fn pnet_capture(tx: Sender<PacketInfo>, name: &str) {
     use pnet::datalink::Channel::Ethernet;
 
     let interface_names_match = |iface: &NetworkInterface| iface.name == name;
@@ -129,6 +77,58 @@ pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
             Err(e) => panic!("packetdump: unable to receive packet: {}", e),
         }
     }
+}
+
+fn pcap(tx: Sender<PacketInfo>, name: &str) {
+    let mut cap = Capture::from_device(name)
+        .unwrap()
+        .timeout(1)
+        .promisc(true)
+        // .snaplen(5000)
+        .open()
+        .unwrap();
+
+    match cap.next_packet() {
+        Ok(packet) => {
+            let header = packet.header;
+            if header.caplen != header.len {
+                println!(
+                    "Warning bad packet.. len {}: caplen: {}, header len: {}",
+                    packet.len(),
+                    header.caplen,
+                    header.len
+                );
+            }
+            let ether = EthernetPacket::new(&packet).unwrap();
+            handle_ethernet_packet(&ether, &tx);
+        }
+        Err(_) => {
+            // println!("Error! {:?}", e);
+        }
+    }
+}
+
+pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
+    println!("Running pcap...");
+    println!("Devices {:?}", Device::list());
+
+    let device = Device::lookup().unwrap().unwrap();
+    println!("Default device {:?}", device);
+
+    let name = device.name.as_str();
+    // "any";
+    // "lo0";
+
+    println!("Capturing on device {:?}", name);
+
+    let use_pcap = false;
+
+    if use_pcap {
+        pcap(tx, name);
+        return;
+    }
+
+    pnet_capture(tx, name);
 
     // traceroute::test_ping();
     // traceroute::test_traceroute();
@@ -139,23 +139,23 @@ pub(crate) fn handle_ethernet_packet(ether: &EthernetPacket, tx: &Sender<PacketI
 
     match ether_type {
         EtherTypes::Ipv4 => {
-            // print!("IPV4 ");
+            print!("IPV4 ");
             handle_ipv4_packet("meow", &ether, &tx);
         }
         EtherTypes::Ipv6 => {
-            // print!("IPV6 ");
+            print!("IPV6 ");
             handle_ipv6_packet("woof", &ether, &tx);
         }
         EtherTypes::Arp => {
             // println!("ARP");
         }
         _ => {
-            // 	println!(
-            // 	"Unknown packet: {} > {}; ethertype: {:?}",
-            // 	ether.get_source(),
-            // 	ether.get_destination(),
-            // 	ether.get_ethertype()
-            // )
+            println!(
+                "Unknown packet: {} > {}; ethertype: {:?}",
+                ether.get_source(),
+                ether.get_destination(),
+                ether.get_ethertype()
+            )
         }
     }
 }
@@ -320,7 +320,7 @@ fn handle_tcp_packet(
             t: crate::structs::PacketType::Tcp,
         };
 
-        // println!("tcp: {:?} {:0b}", packet_info, tcp.get_flags());
+        println!("tcp: {:?} {:0b}", packet_info, tcp.get_flags());
 
         tx.send(packet_info).unwrap();
 
@@ -368,7 +368,10 @@ fn handle_transport_protocol(
     packet: &[u8],
     tx: &Sender<PacketInfo>,
 ) {
-    // println!("Protocol: {}, Source: {}, Destination: {} ({})", protocol, source, destination, dest_host);
+    println!(
+        "Protocol: {}, Source: {}, Destination: {} ({})",
+        protocol, source, destination, protocol
+    );
 
     match protocol {
         IpNextHeaderProtocols::Udp => {
@@ -386,7 +389,7 @@ fn handle_transport_protocol(
             handle_icmpv6_packet(interface_name, source, destination, packet)
         }
         _ => {
-            /*println!(
+            println!(
                 "[{}]: Unknown {} packet: {} > {}; protocol: {:?} length: {}",
                 interface_name,
                 match source {
@@ -397,7 +400,7 @@ fn handle_transport_protocol(
                 destination,
                 protocol,
                 packet.len()
-            )*/
+            )
         }
     }
 }

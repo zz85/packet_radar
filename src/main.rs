@@ -21,6 +21,7 @@ mod client_connection;
 mod dipstick;
 mod geoip;
 mod packet_capture;
+mod pcapng;
 mod processes;
 mod quic;
 mod socket;
@@ -57,6 +58,9 @@ struct Args {
 
     #[arg(short, long, default_value_t = false)]
     tls_fingerprint: bool,
+
+    #[arg(short, long)]
+    pcap_file: Option<String>,
 }
 
 /**
@@ -97,7 +101,11 @@ fn main() {
     // runs packet capture in its thread
     // thread::spawn(move || cap(tx, &args));
     // cap(tx)
-    cap(tx, &args)
+    // cap(tx, &args)
+
+    if let Some(pcap_file) = &args.pcap_file {
+        pcapng::pcap_parse(pcap_file.as_str(), tx);
+    }
 }
 
 fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
