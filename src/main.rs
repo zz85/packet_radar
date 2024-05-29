@@ -17,7 +17,6 @@ mod tcp;
 mod traceroute;
 
 mod client_connection;
-mod dipstick;
 mod geoip;
 mod packet_capture;
 mod pcapng;
@@ -28,7 +27,6 @@ mod structs;
 mod test_netstat2;
 mod tls;
 
-// use dipstick::cap;
 use clap::Parser;
 use client_connection::handle_clients;
 use crossbeam::channel::{unbounded, Receiver};
