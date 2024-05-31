@@ -51,3 +51,5 @@ clap = { version = "4.5.4", features = ["derive"] }
 dashmap = "5.5.3"
 quick_cache = "0.5.1"
 pcap-parser = "0.15.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"

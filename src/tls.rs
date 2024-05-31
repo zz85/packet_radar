@@ -1,6 +1,7 @@
 use std::cmp;
 use tls_parser::{parse_tls_extensions, TlsClientHelloContents, TlsExtension, TlsVersion};
 use tls_parser::{TlsExtensionType, TlsServerHelloContents};
+use tracing::{info, trace};
 
 use itertools::Itertools;
 
@@ -35,7 +36,7 @@ pub fn process_client_hello(client_hello: tls_parser::TlsClientHelloContents<'_>
 
     if let Some(v) = client_hello.ext {
         if let Ok((_, ref extensions)) = parse_tls_extensions(v) {
-            // println!("Client Hello Extensions {:?}", extensions);
+            // info!("Client Hello Extensions {:?}", extensions);
             // TlsExtension::EllipticCurves
             // TlsExtension::ALPN
             // TlsExtension::SignatureAlgorithms
@@ -78,7 +79,7 @@ pub fn process_server_hello(server_hello: tls_parser::TlsServerHelloContents<'_>
     let mut highest = server_hello.version.0;
     if let Some(v) = server_hello.ext {
         if let Ok((_, ref extensions)) = parse_tls_extensions(v) {
-            // println!("Server Hello Extensions {:?}", extensions);
+            // info!("Server Hello Extensions {:?}", extensions);
             // TlsExtension::KeyShare count
             // Hello Retry stats
             // CipherSuit, ALPN
@@ -89,7 +90,7 @@ pub fn process_server_hello(server_hello: tls_parser::TlsServerHelloContents<'_>
                     TlsExtension::SupportedVersions(sv) => {
                         highest = highest_version(highest, sv);
                         if highest < TlsVersion::Tls13.0 {
-                            println!("************** DOWNGRADE ************???");
+                            info!("************** DOWNGRADE ************???");
                         }
                     }
                     _ => {}
@@ -219,7 +220,7 @@ pub fn build_ja4_fingerprint(
         .map(|v| format!("{v:04x}"))
         .collect::<Vec<_>>()
         .join(",");
-    // println!("nr_ciphers: {nr_ciphers} {:?}", ciphers);
+    // info!("nr_ciphers: {nr_ciphers} {:?}", ciphers);
 
     let sig_algs = extensions
         .iter()
@@ -239,7 +240,7 @@ pub fn build_ja4_fingerprint(
     let sig_alg = sig_algs.first().unwrap_or(&default_string);
     let opt_underscore = if sig_algs.is_empty() { "" } else { "_" };
 
-    // println!("{sig_alg:?}");
+    // info!("{sig_alg:?}");
 
     let ext_ids = extensions
         .iter()
@@ -274,7 +275,7 @@ pub fn build_ja4_fingerprint(
                 } else {
                     "00"
                 };
-                // println!("{:?} -> {v}", sv);
+                // info!("{:?} -> {v}", sv);
 
                 Some(v)
             }
@@ -291,7 +292,7 @@ pub fn build_ja4_fingerprint(
         .filter_map(|e| {
             match e {
                 TlsExtension::ALPN(alpn) => {
-                    // println!("ALPN {:?}", alpn);
+                    // info!("ALPN {:?}", alpn);
                     if let Some(s) = alpn.first() {
                         std::str::from_utf8(s).map(first_last).ok()
                     } else {
@@ -326,7 +327,7 @@ pub fn build_ja4_fingerprint(
 
     ext_ids.sort_unstable();
 
-    // println!("{ext_ids:?} nr_exts: {nr_exts} -> {}", ext_ids.len());
+    // info!("{ext_ids:?} nr_exts: {nr_exts} -> {}", ext_ids.len());
 
     let ciphers_hash = hash12(&ciphers);
 

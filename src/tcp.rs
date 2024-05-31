@@ -3,9 +3,9 @@ use dashmap::{
     DashMap,
 };
 use lazy_static::lazy_static;
-use tls_parser::{parse_tls_plaintext, TlsMessage, TlsMessageHandshake, TlsRecordType, TlsVersion};
-
 use std::time::{Duration, Instant};
+use tls_parser::{parse_tls_plaintext, TlsMessage, TlsMessageHandshake, TlsRecordType, TlsVersion};
+use tracing::{info, trace};
 
 lazy_static! {
     /// This is currently just TLS connections
@@ -120,17 +120,17 @@ impl TcpStats {
         }
 
         if len % 1 == 0 {
-            println!("TLS Total: {}", len);
-            println!("Client TLS 1.2: {}", client_12_count);
-            println!("Client TLS 1.3: {}", client_13_count);
-            println!("Server TLS 1.2: {}", server_12_count);
-            println!("Server TLS 1.3: {}", server_13_count);
+            info!("TLS Total: {}", len);
+            info!("Client TLS 1.2: {}", client_12_count);
+            info!("Client TLS 1.3: {}", client_13_count);
+            info!("Server TLS 1.2: {}", server_12_count);
+            info!("Server TLS 1.3: {}", server_13_count);
 
             if server_12_count > 0 {
-                println!("Avg RTT 1.2: {:?}", total_12_duration / server_12_count)
+                info!("Avg RTT 1.2: {:?}", total_12_duration / server_12_count)
             };
             if server_13_count > 0 {
-                println!("Avg RTT 1.3: {:?}", total_13_duration / server_13_count)
+                info!("Avg RTT 1.3: {:?}", total_13_duration / server_13_count)
             };
         }
     }
@@ -150,28 +150,28 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
     //     if packet[0] == 0x17 {
     //         return;
     //     }
-    //     println!(
+    //     info!(
     //         "packet {:x} {:x} {:x} {:x}",
     //         packet[0], packet[1], packet[2], packet[3]
     //     );
     //     // 17 3 3 0 Application Data, TLS 1.2
     // }
 
-    // println!("CH: {:0x?}", packet);
-    println!("TLS payload: {} bytes", packet.len());
+    // info!("CH: {:0x?}", packet);
+    trace!("TLS payload: {} bytes", packet.len());
 
     let v = parse_tls_plaintext(&packet)
         .map_err(|e| {
-            println!("Cannot parse {e:?}");
+            info!("Cannot parse {e:?}");
             // cannot parse
             e
         })
         .ok()?;
 
-    // println!("TLS parsed {:?}", v);
+    // info!("TLS parsed {:?}", v);
     let (_, plain_text) = v;
     for m in plain_text.msg {
-        // println!("msg {:?}", m);
+        // info!("msg {:?}", m);
         // Handshake(ClientKeyExchange)
         // Alert(TlsMessageAlert
 
@@ -185,7 +185,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
                 conn.client_tls_version = ch.version;
                 conn.client_time = Instant::now();
 
-                println!(
+                trace!(
                     "Client Hello Version {} - {} - {:?}",
                     key,
                     TlsVersion(ch.version),
@@ -206,12 +206,12 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
                 let mut conn = tcp_stats.get_or_create_conn(key.to_owned());
                 conn.server_tls_version = highest;
                 conn.server_time = Instant::now();
-                println!(
+                trace!(
                     "Server Hello Supported Version {} - {}",
                     key,
                     TlsVersion(highest)
                 );
-                println!(
+                trace!(
                     "Client -> Server Hello time: {:?}",
                     conn.server_time.duration_since(conn.client_time)
                 );
@@ -223,7 +223,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
                 // For TLS 1.2, usually marks encrypted messages after.
             }
             TlsMessage::Handshake(msg) => {
-                // println!("Handshake msg {:?}", msg);
+                // info!("Handshake msg {:?}", msg);
             }
 
             _ => {}
@@ -231,7 +231,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
     }
 
     if plain_text.hdr.record_type == TlsRecordType::ApplicationData {
-        // println!("Application Data {:?}", app_data);
+        // info!("Application Data {:?}", app_data);
         let tcp_stats = &TCP_STATS;
         let mut conn = tcp_stats.get_or_create_conn(key.to_owned());
 
@@ -241,7 +241,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
         {
             conn.time_to_application_data = Instant::now().duration_since(conn.client_time);
             // time to first application data or more commonly time to first byte
-            println!(
+            info!(
                 "Time to first byte: {}",
                 conn.time_to_application_data.as_millis()
             );

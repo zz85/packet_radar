@@ -7,6 +7,7 @@ use bytes::Buf;
 use hex_literal::hex;
 use ring::hkdf;
 use std::io::Cursor;
+use tracing::debug;
 
 // should probably utilize this https://github.com/zz85/quic-initial-degreaser/blob/main/src/quic_initial_degreaser.rs
 // since draft 29
@@ -70,7 +71,7 @@ pub fn dissect(packet: &[u8]) -> bool {
         let version = view.get_u32();
 
         let version_str = get_version_str(version);
-        println!("{packet_type_str} {version_str}");
+        debug!("{packet_type_str} {version_str}");
 
         let dcid_len = view.get_u8();
         if dcid_len > 20 {
@@ -87,7 +88,7 @@ pub fn dissect(packet: &[u8]) -> bool {
         if packet_type == 0 {
             let token_length = read_var_int(&mut view);
             if token_length != 0 {
-                println!("Bad token length");
+                debug!("Bad token length");
             }
 
             let length = read_var_int(&mut view);
@@ -100,7 +101,7 @@ pub fn dissect(packet: &[u8]) -> bool {
 
             // payload - client hello
 
-            println!(
+            debug!(
                 "QUIC packet length: {}, PN len: {}",
                 length, packet_number_len
             );
@@ -109,7 +110,7 @@ pub fn dissect(packet: &[u8]) -> bool {
             // https://github.com/wireshark/wireshark/blob/master/epan/dissectors/packet-quic.c
         }
 
-        println!(
+        debug!(
             "QUIC Long header: {} quic-{} dcid: {:x} scid: {:x}",
             packet_type_str, version_str, dcid_buf, scid_buf
         );

@@ -11,6 +11,8 @@ use pnet::packet::udp::UdpPacket;
 
 use lazy_static::lazy_static;
 
+use tracing::{debug, info};
+
 use pnet::packet::*;
 
 use crate::args::Args;
@@ -94,7 +96,7 @@ fn pcap(tx: Sender<PacketInfo>, name: &str) {
         Ok(packet) => {
             let header = packet.header;
             if header.caplen != header.len {
-                println!(
+                info!(
                     "Warning bad packet.. len {}: caplen: {}, header len: {}",
                     packet.len(),
                     header.caplen,
@@ -105,23 +107,23 @@ fn pcap(tx: Sender<PacketInfo>, name: &str) {
             handle_ethernet_packet(&ether, &tx, None);
         }
         Err(_) => {
-            // println!("Error! {:?}", e);
+            // info!("Error! {:?}", e);
         }
     }
 }
 
 pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
-    println!("Running pcap...");
-    println!("Devices {:?}", Device::list());
+    info!("Running pcap...");
+    info!("Devices {:?}", Device::list());
 
     let device = Device::lookup().unwrap().unwrap();
-    println!("Default device {:?}", device);
+    info!("Default device {:?}", device);
 
     let name = device.name.as_str();
     // "any";
     // "lo0";
 
-    println!("Capturing on device {:?}", name);
+    info!("Capturing on device {:?}", name);
 
     let use_pcap = false;
 
@@ -154,10 +156,10 @@ pub(crate) fn handle_ethernet_packet(
             handle_ipv6_packet(iface, &ether, &tx, proc);
         }
         EtherTypes::Arp => {
-            // println!("ARP");
+            // info!("ARP");
         }
         _ => {
-            println!(
+            debug!(
                 "Unknown packet: {} > {}; ethertype: {:?}",
                 ether.get_source(),
                 ether.get_destination(),
@@ -175,7 +177,7 @@ fn handle_ipv4_packet(
 ) {
     let header = Ipv4Packet::new(ethernet.payload());
     if let Some(header) = header {
-        // println!("TTL {}", header.get_ttl());
+        // info!("TTL {}", header.get_ttl());
 
         handle_transport_protocol(
             interface_name,
@@ -187,7 +189,7 @@ fn handle_ipv4_packet(
             proc,
         );
     } else {
-        println!("[{}]: Malformed IPv4 Packet", interface_name);
+        info!("[{}]: Malformed IPv4 Packet", interface_name);
     }
 }
 
@@ -209,7 +211,7 @@ fn handle_ipv6_packet(
             proc,
         );
     } else {
-        println!("[{}]: Malformed IPv6 Packet", interface_name);
+        info!("[{}]: Malformed IPv6 Packet", interface_name);
     }
 }
 
@@ -238,7 +240,7 @@ fn handle_udp_packet(
         tx.send(packet_info).unwrap();
 
         if DEBUG {
-            println!(
+            info!(
                 "[{}]: UDP Packet: {}:{} > {}:{}; length: {}",
                 interface_name,
                 source,
@@ -254,15 +256,15 @@ fn handle_udp_packet(
 
         // intercept DNS calls
         if udp.get_source() == 53 {
-            // println!("Payload {:?}", payload);
+            // info!("Payload {:?}", payload);
             parse_dns(payload).map(|v| {
-                // println!("DNS {}\n", v);
+                // info!("DNS {}\n", v);
                 v.parse_body();
             });
         }
 
         if quic::dissect(payload) {
-            println!(
+            debug!(
                 "[{}]: QUIC Packet: {}:{} > {}:{}; length: {}",
                 interface_name,
                 source,
@@ -280,9 +282,9 @@ fn handle_udp_packet(
             // connection migrations
         }
 
-    // println!("UDP Payload {:?}", udp.payload());
+    // info!("UDP Payload {:?}", udp.payload());
     } else {
-        println!("[{}]: Malformed UDP Packet", interface_name);
+        info!("[{}]: Malformed UDP Packet", interface_name);
     }
 }
 
@@ -298,7 +300,7 @@ fn handle_tcp_packet(
 
     if let Some(tcp) = tcp {
         if DEBUG {
-            println!(
+            info!(
                 "[{}]: TCP Packet: {}:{} > {}:{}; length: {}",
                 interface_name,
                 source,
@@ -346,7 +348,7 @@ fn handle_tcp_packet(
 
         let packet_info2 = packet_info.clone();
 
-        // println!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
+        // info!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
 
         tx.send(packet_info).unwrap();
 
@@ -403,7 +405,7 @@ fn handle_tcp_packet(
             }
         }
     } else {
-        println!("[{}]: Malformed TCP Packet", interface_name);
+        info!("[{}]: Malformed TCP Packet", interface_name);
     }
 }
 
@@ -416,7 +418,7 @@ fn handle_transport_protocol(
     tx: &Sender<PacketInfo>,
     proc: Option<&ProcInfo>,
 ) {
-    // println!(
+    // info!(
     //     "Protocol: {}, Source: {}, Destination: {} ({})",
     //     protocol, source, destination, protocol
     // );
@@ -437,7 +439,7 @@ fn handle_transport_protocol(
             handle_icmpv6_packet(interface_name, source, destination, packet)
         }
         _ => {
-            println!(
+            debug!(
                 "[{}]: Unknown {} packet: {} > {}; protocol: {:?} length: {}",
                 interface_name,
                 match source {
@@ -462,7 +464,7 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
             IcmpTypes::EchoReply => {
                 let echo_reply_packet = echo_reply::EchoReplyPacket::new(packet).unwrap();
                 if DEBUG {
-                    println!(
+                    info!(
                         "[{}]: ICMP echo reply {} -> {} (seq={:?}, id={:?})",
                         interface_name,
                         source,
@@ -477,7 +479,7 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
             IcmpTypes::EchoRequest => {
                 let echo_request_packet = echo_request::EchoRequestPacket::new(packet).unwrap();
                 if DEBUG {
-                    println!(
+                    info!(
                         "[{}]: ICMP echo request {} -> {} (seq={:?}, id={:?})",
                         interface_name,
                         source,
@@ -491,7 +493,7 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
             IcmpTypes::TimeExceeded => {
                 let time_exceeded_packet = time_exceeded::TimeExceededPacket::new(packet).unwrap();
                 if DEBUG {
-                    println!(
+                    info!(
                         "[{}]: ICMP TimeExceeded {} -> {} (seq={:?}, payload={:?})\n{:?}",
                         interface_name,
                         source,
@@ -505,7 +507,7 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
                 handle_time_exceeded(source, time_exceeded_packet);
             }
             // TODO Add Destination unavailable
-            _ => println!(
+            _ => info!(
                 "[{}]: ICMP packet {} -> {} (type={:?})",
                 interface_name,
                 source,
@@ -514,7 +516,7 @@ fn handle_icmp_packet(interface_name: &str, source: IpAddr, destination: IpAddr,
             ),
         }
     } else {
-        println!("[{}]: Malformed ICMP Packet", interface_name);
+        info!("[{}]: Malformed ICMP Packet", interface_name);
     }
 }
 
@@ -522,7 +524,7 @@ fn handle_icmpv6_packet(interface_name: &str, source: IpAddr, destination: IpAdd
     let icmpv6_packet = Icmpv6Packet::new(packet);
     if let Some(icmpv6_packet) = icmpv6_packet {
         if DEBUG {
-            println!(
+            info!(
                 "[{}]: ICMPv6 packet {} -> {} (type={:?})",
                 interface_name,
                 source,
@@ -531,6 +533,6 @@ fn handle_icmpv6_packet(interface_name: &str, source: IpAddr, destination: IpAdd
             )
         }
     } else {
-        println!("[{}]: Malformed ICMPv6 Packet", interface_name);
+        info!("[{}]: Malformed ICMPv6 Packet", interface_name);
     }
 }
