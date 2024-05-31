@@ -232,6 +232,7 @@ fn handle_udp_packet(
             src_port: udp.get_source(),
             t: crate::structs::PacketType::Udp,
             pid: proc.map(|p| p.pid),
+            ..Default::default()
         };
 
         tx.send(packet_info).unwrap();
@@ -332,7 +333,6 @@ fn handle_tcp_packet(
         // get_sequence
         // options raw
 
-        // packet_size
         let packet_info = PacketInfo {
             len: packet.len() as u16, // this is correct, do not use tcp.packet_size();
             dest: destination.to_string(),
@@ -341,7 +341,10 @@ fn handle_tcp_packet(
             src_port: tcp.get_source(),
             t: crate::structs::PacketType::Tcp,
             pid: proc.map(|p| p.pid),
+            ..Default::default()
         };
+
+        let packet_info2 = packet_info.clone();
 
         // println!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
 
@@ -358,7 +361,17 @@ fn handle_tcp_packet(
         if is_handshake {
             if push_bit {
                 // ready to parse
-                parse_tcp_payload(packet, &key);
+                let stats = parse_tcp_payload(packet, &key);
+                if let Some(conn) = stats {
+                    let info = PacketInfo {
+                        ja4: conn.ja4,
+                        sni: conn.sni,
+                        process: proc.and_then(|p| p.name.as_ref().map(|v| v.clone())),
+                        t: crate::structs::PacketType::Ja4,
+                        ..packet_info2
+                    };
+                    tx.send(info).unwrap();
+                }
                 return;
             }
 
@@ -372,9 +385,20 @@ fn handle_tcp_packet(
             // reassemble handshake
             prev.extend_from_slice(packet);
 
-            if push_bit || prev.len() > 48000 {
-                // if push bit is set, or buffer reaches 512KB, parse and flush
-                parse_tcp_payload(&prev[..], &key);
+            if push_bit || prev.len() > 64000 {
+                // if push bit is set, or buffer reaches 64KB, parse and flush
+                let stats = parse_tcp_payload(&prev[..], &key);
+
+                if let Some(conn) = stats {
+                    let info = PacketInfo {
+                        ja4: conn.ja4,
+                        sni: conn.sni,
+                        process: proc.and_then(|p| p.name.as_ref().map(|v| v.clone())),
+                        t: crate::structs::PacketType::Ja4,
+                        ..packet_info2
+                    };
+                    tx.send(info).unwrap();
+                }
                 prev.clear();
             }
         }

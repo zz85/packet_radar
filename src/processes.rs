@@ -170,6 +170,9 @@ impl ConnectionTracker {
         let proto = match msg.t {
             PacketType::Tcp => SockType::TCP,
             PacketType::Udp => SockType::UDP,
+            PacketType::Ja4 => {
+                return;
+            }
         };
 
         let keyed_tuple = unique_tuple((msg.src, msg.src_port, msg.dest, msg.dest_port));

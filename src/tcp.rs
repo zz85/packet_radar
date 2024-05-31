@@ -1,4 +1,7 @@
-use dashmap::{mapref::one::RefMut, DashMap};
+use dashmap::{
+    mapref::one::{Ref, RefMut},
+    DashMap,
+};
 use lazy_static::lazy_static;
 use tls_parser::{parse_tls_plaintext, TlsMessage, TlsMessageHandshake, TlsRecordType, TlsVersion};
 
@@ -59,6 +62,10 @@ impl TcpStats {
         Self {
             conn_map: Default::default(),
         }
+    }
+
+    pub fn get<'a>(&'a self, key: &String) -> Option<Ref<'a, String, ConnStat>> {
+        self.conn_map.get(key)
     }
 
     pub fn get_or_create_conn<'a>(&'a self, key: String) -> RefMut<'a, String, ConnStat> {
@@ -135,7 +142,7 @@ pub fn is_handshake_packet(packet: &[u8]) -> bool {
     && packet[1] == 0x03
 }
 
-pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
+pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
     if !is_handshake_packet(packet) {
         return None;
     }
@@ -189,6 +196,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
                 conn.sni = Some(ch.sni);
 
                 tcp_stats.count();
+                return Some(conn.clone());
             }
             TlsMessage::Handshake(TlsMessageHandshake::ServerHello(server_hello)) => {
                 let highest = process_server_hello(server_hello);
@@ -209,6 +217,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
                 );
 
                 tcp_stats.count();
+                return Some(conn.clone());
             }
             TlsMessage::ChangeCipherSpec => {
                 // For TLS 1.2, usually marks encrypted messages after.
@@ -240,5 +249,5 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<()> {
         }
     }
 
-    Some(())
+    None
 }

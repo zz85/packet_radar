@@ -1,4 +1,8 @@
-use std::{convert::TryFrom, io::Read};
+use std::{
+    convert::TryFrom,
+    io::Read,
+    process::{Command, Stdio},
+};
 
 use pcap_parser::traits::PcapReaderIterator;
 use pcap_parser::*;
@@ -11,7 +15,7 @@ use crate::{
     packet_capture::handle_ethernet_packet,
     structs::{PacketInfo, ProcInfo},
 };
-use std::io::{self, BufRead};
+use std::io::{self};
 
 const PCAPNG_PIB_NAME: u16 = 2; /* UTF-8 string with name of process */
 const PCAPNG_PIB_PATH: u16 = 3; /* UTF-8 string with path of process */
@@ -19,7 +23,27 @@ const PCAPNG_PIB_UUID: u16 = 4; /* 16 bytes of the process UUID */
 const PCAPNG_EPB_PIB_INDEX: u16 = 0x8001; /* 32 bits number of process information block within the section */
 
 pub fn pcap_parse(path: &str, tx: Sender<PacketInfo>) {
-    if path == "-" {
+    if path == "!" {
+        println!("Spawning tcpdump");
+
+        let mut process = Command::new("tcpdump")
+            .arg("-k")
+            .arg("-w")
+            .arg("-")
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn child process");
+
+        // Get the stdout handle
+        let stdout = process
+            .stdout
+            .as_mut()
+            .expect("Failed to get stdout handle");
+
+        // let reader = BufReader::new(stdout);
+        let mut reader = PcapNGReader::new(65536, stdout).expect("PcapNGReader");
+        pcap_parse_with_reader(tx, &mut reader);
+    } else if path == "-" {
         let stdin = io::stdin();
         let mut reader = PcapNGReader::new(65536, stdin).expect("PcapNGReader");
         pcap_parse_with_reader(tx, &mut reader);
@@ -146,7 +170,6 @@ pub fn pcap_parse_with_reader<T: Read>(tx: Sender<PacketInfo>, reader: &mut Pcap
         }
     }
     println!("num_blocks: {}", num_blocks);
-    std::thread::sleep(std::time::Duration::from_millis(10000));
 }
 
 /*

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct PacketInfo {
     pub len: u16,
     pub src: String,
@@ -10,14 +10,20 @@ pub struct PacketInfo {
     pub t: PacketType, // type: t for tcp, u for udp
     // todo timestamp + id
     pub pid: Option<u32>,
+    pub process: Option<String>,
+    pub ja4: Option<String>,
+    pub sni: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub enum PacketType {
+    #[default]
     #[serde(rename = "t")]
     Tcp,
     #[serde(rename = "u")]
     Udp,
+    #[serde(rename = "j")]
+    Ja4,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
