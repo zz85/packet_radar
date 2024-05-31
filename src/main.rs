@@ -1,3 +1,10 @@
+use clap::Parser;
+use crossbeam::{unbounded, Receiver};
+use packet_radar::args::Args;
+use packet_radar::client_connection::handle_clients;
+use packet_radar::packet_capture::cap;
+use packet_radar::structs::PacketInfo;
+use packet_radar::{pcapng, processes};
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::sync::Server;
@@ -5,60 +12,6 @@ use websocket::sync::Server;
 use std::net::TcpStream;
 use std::sync::{Arc, RwLock};
 use std::thread;
-
-#[macro_use]
-extern crate lazy_static;
-extern crate enum_primitive_derive;
-extern crate num_traits;
-
-mod dns;
-
-mod tcp;
-mod traceroute;
-
-mod client_connection;
-mod geoip;
-mod packet_capture;
-mod pcapng;
-mod processes;
-mod quic;
-mod socket;
-mod structs;
-mod test_netstat2;
-mod tls;
-
-use clap::Parser;
-use client_connection::handle_clients;
-use crossbeam::channel::{unbounded, Receiver};
-use dns::{parse_dns, reverse_lookup};
-use geoip::{asn_lookup, city_lookup, test_lookups};
-use packet_capture::cap;
-use structs::{ClientRequest, PacketInfo};
-use tcp::parse_tcp_payload;
-use traceroute::{handle_echo_reply, handle_time_exceeded};
-
-#[derive(Parser, Debug, Clone)]
-#[command(version, about, long_about = None)]
-struct Args {
-    // #[arg(short, long, default_value_t = true)]
-    // top: bool,
-    #[arg(short, long)]
-    monitoring: bool,
-
-    /// websockets support
-    #[arg(short, long, default_value_t = true)]
-    ws: bool,
-
-    /// websocket bind addr
-    #[arg(short, long, default_value = "127.0.0.1:3012")]
-    server: String,
-
-    #[arg(short, long, default_value_t = false)]
-    tls_fingerprint: bool,
-
-    #[arg(short, long)]
-    pcap_file: Option<String>,
-}
 
 /**
  * This file starts a packet capture and a websocket server

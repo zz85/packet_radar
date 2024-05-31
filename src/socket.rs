@@ -121,11 +121,6 @@ impl Display for SockInfo {
     }
 }
 
-use std::collections::HashMap;
-use std::sync::RwLock;
-use std::thread;
-use std::time::{Duration, Instant};
-
 #[derive(Debug, Clone, Default)]
 struct ProcessMeta {
     pid: u32,
@@ -135,10 +130,6 @@ struct ProcessMeta {
     bytes_recv: u64,
     bytes_sent: u64,
 }
-
-use crate::packet_capture::is_local;
-use crate::structs::PacketType;
-use crate::PacketInfo;
 
 fn read_fd_socket(pid: u32, fd: &ProcFDInfo) -> Option<SockInfo> {
     // let process_name = match proc_pid::name(pid as i32) {

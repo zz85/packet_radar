@@ -9,9 +9,9 @@ use std::thread;
 use serde_json::json;
 
 use super::traceroute;
-use super::{asn_lookup, city_lookup};
-use super::{parse_dns, reverse_lookup};
-use super::{ClientRequest, PacketInfo};
+use crate::dns::reverse_lookup;
+use crate::geoip::{asn_lookup, city_lookup};
+use crate::structs::ClientRequest;
 
 pub fn handle_clients(
     server: WsServer<websocket::server::NoTlsAcceptor, std::net::TcpListener>,

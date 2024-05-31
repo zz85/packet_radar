@@ -9,22 +9,23 @@ use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
 
+use lazy_static::lazy_static;
+
 use pnet::packet::*;
 
-use super::PacketInfo;
-use super::{parse_dns, reverse_lookup};
-
-use super::parse_tcp_payload;
-use super::{handle_echo_reply, handle_time_exceeded};
+use crate::args::Args;
+use crate::dns::parse_dns;
+use crate::structs::PacketInfo;
+use crate::traceroute::{handle_echo_reply, handle_time_exceeded};
 
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 
 use crossbeam::channel::Sender;
 
+use crate::quic;
 use crate::structs::ProcInfo;
-use crate::tcp::is_handshake_packet;
-use crate::{quic, Args};
+use crate::tcp::{is_handshake_packet, parse_tcp_payload};
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;

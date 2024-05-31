@@ -1,9 +1,6 @@
 use crossbeam::Receiver;
-
+use lazy_static::lazy_static;
 use libproc::libproc::proc_pid;
-use sysinfo::Process;
-
-use std::borrow::Borrow;
 use std::{cmp, net::IpAddr, sync::Arc};
 
 use crate::socket::{get_processes, SockInfo, SockType};
@@ -87,8 +84,7 @@ struct ProcessMeta {
 }
 
 use crate::packet_capture::is_local;
-use crate::structs::PacketType;
-use crate::PacketInfo;
+use crate::structs::{PacketInfo, PacketType};
 
 #[derive(Debug, Clone)]
 struct Meter {

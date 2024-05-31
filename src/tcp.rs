@@ -1,10 +1,8 @@
 use dashmap::{mapref::one::RefMut, DashMap};
+use lazy_static::lazy_static;
 use tls_parser::{parse_tls_plaintext, TlsMessage, TlsMessageHandshake, TlsRecordType, TlsVersion};
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 lazy_static! {
     /// This is currently just TLS connections
@@ -12,8 +10,6 @@ lazy_static! {
 }
 
 const TLS_STATS: bool = false;
-
-use crate::tls::ClientHello;
 
 use super::tls::{process_client_hello, process_server_hello};
 

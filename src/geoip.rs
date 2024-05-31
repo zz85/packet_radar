@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use maxminddb::geoip2::{Asn, City};
 use maxminddb::{MaxMindDBError, Reader};
 

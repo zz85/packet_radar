@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 use pnet::packet::icmp::echo_reply::EchoReplyPacket;
 use pnet::packet::icmp::echo_request::MutableEchoRequestPacket;
 use pnet::packet::icmp::time_exceeded::TimeExceededPacket;

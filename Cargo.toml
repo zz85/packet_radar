@@ -4,6 +4,17 @@ version = "0.1.0"
 authors = ["Joshua Koo <zz85nus@gmail.com>", "Yang Bin Kwok <yangbin@fragnetics.com>"]
 edition = "2018"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "packet_radar"
+path = "src/main.rs"
+
+[[bin]]
+name = "ja4_collector"
+path = "src/ja4_collector.rs"
+
 [dependencies]
 websocket = "0.22"
 tokio="*"
