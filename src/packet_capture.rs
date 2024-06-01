@@ -27,7 +27,7 @@ use crossbeam::channel::Sender;
 
 use crate::quic;
 use crate::structs::ProcInfo;
-use crate::tcp::{is_handshake_packet, parse_tcp_payload};
+use crate::tcp::{is_handshake_packet, parse_tcp_payload, TCP_STATS};
 
 const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
@@ -364,6 +364,7 @@ fn handle_tcp_packet(
             if push_bit {
                 // ready to parse
                 let stats = parse_tcp_payload(packet, &key);
+
                 if let Some(conn) = stats {
                     let info = PacketInfo {
                         ja4: conn.ja4,
@@ -372,6 +373,11 @@ fn handle_tcp_packet(
                         t: crate::structs::PacketType::Ja4,
                         ..packet_info2
                     };
+
+                    let mut moo = TCP_STATS.get_or_create_conn(key);
+                    moo.pid = info.pid.clone();
+                    moo.process_name = info.process.clone();
+
                     tx.send(info).unwrap();
                 }
                 return;
@@ -399,6 +405,11 @@ fn handle_tcp_packet(
                         t: crate::structs::PacketType::Ja4,
                         ..packet_info2
                     };
+
+                    let mut moo = TCP_STATS.get_or_create_conn(key);
+                    moo.pid = info.pid.clone();
+                    moo.process_name = info.process.clone();
+
                     tx.send(info).unwrap();
                 }
                 prev.clear();

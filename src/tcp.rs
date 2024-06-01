@@ -22,27 +22,28 @@ use super::tls::{process_client_hello, process_server_hello};
 // https://tools.ietf.org/html/rfc815
 // https://packetpushers.net/ip-fragmentation-in-detail/
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConnStat {
     /// Highest client version
     client_tls_version: u16,
     /// Client Hello time
-    pub client_time: Instant,
+    pub client_time: Option<Instant>,
     /// Highest server version
     server_tls_version: u16,
     /// Server Hello time
-    pub server_time: Instant,
+    pub server_time: Option<Instant>,
 
     time_to_application_data: Duration,
+
+    // from client hello
     pub sni: Option<String>,
     pub ja3: Option<String>,
     pub ja4: Option<String>,
+
+    pub pid: Option<u32>,
+    pub process_name: Option<String>,
     // TODO combine ConnectionMeta
     // associate dns quries
-    // PIDs
-    // client hello
-    // Sni
-    // JA3/JA4
     // socket info
 }
 
@@ -72,12 +73,13 @@ impl TcpStats {
         let entry = self.conn_map.entry(key).or_insert_with(|| ConnStat {
             client_tls_version: 0,
             server_tls_version: 0,
-            client_time: Instant::now(),
-            server_time: Instant::now(),
+            client_time: Some(Instant::now()),
+            server_time: Some(Instant::now()),
             time_to_application_data: Duration::new(0, 0),
             sni: None,
             ja3: None,
             ja4: None,
+            ..Default::default()
         });
 
         entry
@@ -108,14 +110,23 @@ impl TcpStats {
 
             if stat.server_tls_version == TlsVersion::Tls12.0 {
                 server_12_count += 1;
-                let lapsed = stat.server_time.duration_since(stat.client_time);
-                // total_12_duration += lapsed;
-                total_12_duration += stat.time_to_application_data;
+                match (stat.server_time, stat.client_time) {
+                    (Some(server_time), Some(client_time)) => {
+                        let lapsed = server_time.duration_since(client_time);
+                        // total_12_duration += lapsed;
+                        total_12_duration += stat.time_to_application_data;
+                    }
+                    _ => {}
+                }
             } else if stat.server_tls_version == TlsVersion::Tls13.0 {
                 server_13_count += 1;
-                let lapsed = stat.server_time.duration_since(stat.client_time);
-                // total_13_duration += lapsed;
-                total_13_duration += stat.time_to_application_data;
+                match (stat.server_time, stat.client_time) {
+                    (Some(server_time), Some(client_time)) => {
+                        let lapsed = server_time.duration_since(client_time);
+                        total_13_duration += stat.time_to_application_data;
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -183,7 +194,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
                 let tcp_stats = &TCP_STATS;
                 let mut conn = tcp_stats.get_or_create_conn(key.to_owned());
                 conn.client_tls_version = ch.version;
-                conn.client_time = Instant::now();
+                conn.client_time = Some(Instant::now());
 
                 trace!(
                     "Client Hello Version {} - {} - {:?}",
@@ -205,7 +216,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
                 let tcp_stats = &TCP_STATS;
                 let mut conn = tcp_stats.get_or_create_conn(key.to_owned());
                 conn.server_tls_version = highest;
-                conn.server_time = Instant::now();
+                conn.server_time = Some(Instant::now());
                 trace!(
                     "Server Hello Supported Version {} - {}",
                     key,
@@ -213,7 +224,9 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
                 );
                 trace!(
                     "Client -> Server Hello time: {:?}",
-                    conn.server_time.duration_since(conn.client_time)
+                    conn.server_time
+                        .unwrap()
+                        .duration_since(conn.client_time.unwrap())
                 );
 
                 tcp_stats.count();
@@ -239,7 +252,8 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
         // TODO probably need to check outgoing app data vs incoming app data
         // && Instant::now().duration_since(conn.client_time) > Duration::from_millis(1)
         {
-            conn.time_to_application_data = Instant::now().duration_since(conn.client_time);
+            conn.time_to_application_data =
+                Instant::now().duration_since(conn.client_time.unwrap());
             // time to first application data or more commonly time to first byte
             info!(
                 "Time to first byte: {}",

@@ -1,11 +1,17 @@
 use crossbeam::Receiver;
+use hdrhistogram::Histogram;
 use lazy_static::lazy_static;
 use libproc::libproc::proc_pid;
+use pretty_bytes::converter::convert;
+use std::collections::{HashMap, HashSet};
+use std::sync::RwLock;
+use std::thread;
+use std::time::{Duration, Instant};
 use std::{cmp, net::IpAddr, sync::Arc};
 
+use crate::packet_capture::is_local;
 use crate::socket::{get_processes, SockInfo, SockType};
-use hdrhistogram::Histogram;
-use pretty_bytes::converter::convert;
+use crate::structs::{PacketInfo, PacketType};
 
 lazy_static! {
     pub static ref CONNECTIONS: Arc<RwLock<ConnectionTracker>> = Default::default();
@@ -57,8 +63,6 @@ sudo lsof -i
 netstat -anl
 */
 
-/* proc pid: proc_listpids, proc_name, proc_pidinfo, proc_regionfilename, proc_pidpath */
-
 fn unique_tuple(tuple: (String, u16, String, u16)) -> (String, u16, String, u16) {
     let (a1, p1, a2, p2) = tuple;
 
@@ -67,11 +71,6 @@ fn unique_tuple(tuple: (String, u16, String, u16)) -> (String, u16, String, u16)
         _ => (a2, p2, a1, p1),
     }
 }
-
-use std::collections::{HashMap, HashSet};
-use std::sync::RwLock;
-use std::thread;
-use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
 struct ProcessMeta {
@@ -82,9 +81,6 @@ struct ProcessMeta {
     bytes_recv: u64,
     bytes_sent: u64,
 }
-
-use crate::packet_capture::is_local;
-use crate::structs::{PacketInfo, PacketType};
 
 #[derive(Debug, Clone)]
 struct Meter {
@@ -317,7 +313,10 @@ impl ConnectionTracker {
                             proc_stats.sni.insert(sni.clone());
                         }
 
-                        let diff = conn.server_time.duration_since(conn.client_time);
+                        let diff = conn
+                            .server_time
+                            .unwrap()
+                            .duration_since(conn.client_time.unwrap());
                         if diff.as_millis() > 0 {
                             proc_stats.rtt = diff;
                         }
