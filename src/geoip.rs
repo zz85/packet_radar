@@ -15,11 +15,11 @@ lazy_static! {
 }
 
 // TODO filter internal network ip address and do not panic here!
-pub fn city_lookup(ip: IpAddr) -> Result<City, MaxMindDBError> {
+pub fn city_lookup(ip: IpAddr) -> Result<City<'static>, MaxMindDBError> {
     CITY_READER.lookup(ip)
 }
 
-pub fn asn_lookup(ip: IpAddr) -> Result<Asn, MaxMindDBError> {
+pub fn asn_lookup(ip: IpAddr) -> Result<Asn<'static>, MaxMindDBError> {
     ASN_READER.lookup(ip)
 }
 

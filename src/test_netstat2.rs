@@ -59,17 +59,17 @@ pub fn test_netstat2() {
  * this probably can replace netstat or my custom implemntation of netstat
  */
 
-use sysinfo::{NetworkExt, Pid, ProcessExt, ProcessorExt, RefreshKind, Signal, System, SystemExt};
+use sysinfo::{RefreshKind, System};
 
 pub fn get_sys() -> System {
     /* uses sys crate */
     // let sys = System::new();
-    let sys = System::new_with_specifics(RefreshKind::everything().without_disk_list());
+    let sys = System::new_with_specifics(RefreshKind::everything());
 
-    println!("total memory: {} kB", sys.get_total_memory());
-    println!("used memory : {} kB", sys.get_used_memory());
-    println!("total swap  : {} kB", sys.get_total_swap());
-    println!("used swap   : {} kB", sys.get_used_swap());
+    println!("total memory: {} kB", sys.total_memory());
+    println!("used memory : {} kB", sys.used_memory());
+    println!("total swap  : {} kB", sys.total_swap());
+    println!("used swap   : {} kB", sys.used_swap());
 
     sys
 }
@@ -77,7 +77,7 @@ pub fn get_sys() -> System {
 fn get_pid_info(sys: &System, pid: u32) {
     // let pid_str = format!("{}", pid);
     // if let Ok(pid) = Pid::from(pid) {
-    match sys.get_process(pid as i32) {
+    match sys.process((pid as usize).into()) {
         Some(p) => {
             // println!(
             //     "{}\t{:?}\t{}\t{}\t{}",
