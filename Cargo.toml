@@ -19,6 +19,10 @@ path = "src/ja4_collector.rs"
 name = "ja4_processes"
 path = "src/ja4_processes.rs"
 
+[[bin]]
+name = "ja4_df_processes"
+path = "src/bin/ja4_df_processes.rs"
+
 [dependencies]
 websocket = "0.27.1"
 tokio="*"
@@ -58,3 +62,7 @@ pcap-parser = "0.15.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 crossterm = "0.27.0"
+polars = { version = "0.40.0", features = ["lazy"], optional = true }
+
+[features]
+df = ["dep:polars"]

@@ -45,6 +45,7 @@ fn main() -> io::Result<()> {
             ))?;
 
         let mut process_to_ja4 = HashMap::<_, ProcInfo>::new();
+
         for conn in TCP_STATS.conn_map.iter() {
             if let Some(ja4) = &conn.ja4 {
                 let pid = &conn.pid.unwrap_or(0);
