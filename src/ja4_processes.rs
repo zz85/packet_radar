@@ -22,7 +22,7 @@ use tracing_subscriber;
 /// JA4 process collector
 /// Mac only, uses sudo to run with process mode
 fn main() -> io::Result<()> {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
 
     let (tx, _rx) = unbounded::<PacketInfo>();
 
@@ -48,8 +48,7 @@ fn main() -> io::Result<()> {
         for conn in TCP_STATS.conn_map.iter() {
             if let Some(ja4) = &conn.ja4 {
                 let pid = &conn.pid.unwrap_or(0);
-                let default = "".to_owned();
-                let process = conn.process_name.clone().unwrap_or_else(|| default);
+                let process = conn.process_name.clone().unwrap_or_default();
                 // info!("{ja4} {process} {pid}");
 
                 let entry = process_to_ja4.entry(process).or_default();
@@ -58,7 +57,7 @@ fn main() -> io::Result<()> {
             }
         }
 
-        info!("{process_to_ja4:#?}");
+        let _ = writeln!(stdout, "{process_to_ja4:#?}");
         stdout.flush()?;
         std::thread::sleep(Duration::from_millis(5000));
     }

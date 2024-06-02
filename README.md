@@ -1,6 +1,6 @@
 # Packet Radar
 
-Packet Radar is an experimental realtime network traffic visualization.
+Packet Radar is an experimental realtime network traffic analyzer and visualizer.
 
 It captures packets like pcap and displays the information in various ways like wireshark.
 
@@ -16,7 +16,7 @@ This started as a weekend project project for
 
 If you like this, you may also be interested in [Space Rader](https://github.com/zz85/space-radar), a disk space visualization app.
 
-Server uses rust, UI is done with Canvas + JS.
+Core code is written in rust, Visualization UI is done with Canvas + JS.
 
 ### Server
 
@@ -60,8 +60,7 @@ open `html/packet_viz.html` in your browser
 ### ChangeLog
 May 24, 2024 - Ability to read from pcap file or stdin (eg. sudo tcpdump -w - | sudo packet_radar -p -  ).
 On macs, tcpdump using pktap will provide process id information during packet capture.
-This method requires sudo, but for unprivileged users, the lsof method will be the fallback,
-
+This method requires sudo, but for unprivileged users, the lsof method will be the fallback.
 
 ### IDEAs / TODO
 - [x] DNS resolution
