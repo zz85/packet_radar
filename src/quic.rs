@@ -5,9 +5,9 @@
 
 use bytes::Buf;
 use hex_literal::hex;
-use quick_cache::sync::Cache;
+use quick_cache::unsync::Cache;
 use ring::hkdf;
-use std::io::Cursor;
+use std::{io::Cursor, sync::Mutex};
 use tls_parser::{parse_tls_message_handshake, TlsMessage, TlsMessageHandshake};
 use tracing::{debug, info};
 
@@ -20,7 +20,7 @@ pub const INITIAL_SERVER_LABEL: [u8; 9] = *b"server in";
 lazy_static::lazy_static! {
     static ref INITIAL_SALT: hkdf::Salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &INITIAL_SALT_VALUE);
 
-    static ref QUIC_CACHE: Cache<Vec<u8>, CryptoAssembler> = Cache::new(50);
+    static ref QUIC_CACHE: Mutex<Cache<Vec<u8>, CryptoAssembler>> = Mutex::new(Cache::new(50));
 }
 
 // https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#sample-varint
@@ -260,7 +260,12 @@ pub fn dissect2(packet: &[u8]) -> Option<ClientHello> {
     debug!("QUIC Packet version {version}. #{packet_number}. scid {scid:02x?} -> dcid {dcid:02x?}");
 
     let mut payload = clear_initial.payload;
-    let mut crypto = QUIC_CACHE.get(&dcid).unwrap_or(CryptoAssembler::new());
+    let mut cache = QUIC_CACHE.lock().unwrap();
+
+    let mut crypto = cache
+        .get_mut_or_insert_with(&dcid, || Ok::<_, std::io::Error>(CryptoAssembler::new()))
+        .unwrap()
+        .unwrap();
 
     // iterate frames from the QUIC packet
     while !payload.is_empty() {
@@ -274,19 +279,25 @@ pub fn dissect2(packet: &[u8]) -> Option<ClientHello> {
     }
 
     if crypto.completed() {
-        QUIC_CACHE.remove(&dcid);
         let (_, msg) = parse_tls_message_handshake(crypto.get_bytes())
             .map_err(|e| info!("Cannot parse {e:?}"))
             .ok()?;
 
-        if let TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) = msg {
+        let ret = if let TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) = msg
+        {
             let ch = process_client_hello(client_hello);
 
-            info!("QUIC {ch:?}");
-            return Some(ch);
-        }
-    } else {
-        QUIC_CACHE.insert(dcid, crypto);
+            debug!("QUIC {ch:?}");
+
+            Some(ch)
+        } else {
+            None
+        };
+
+        // remove from cache
+        drop(crypto);
+        cache.remove(&dcid);
+        return ret;
     }
 
     None
