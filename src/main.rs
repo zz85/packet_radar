@@ -1,11 +1,9 @@
 use clap::Parser;
-use crossbeam::{unbounded, Receiver};
+use crossbeam::{unbounded};
 use packet_radar::args::Args;
-use packet_radar::client_connection::handle_clients;
+use packet_radar::client_connection::{handle_clients, spawn_broadcast};
 use packet_radar::packet_capture::cap;
-use packet_radar::structs::PacketInfo;
 use packet_radar::{pcapng, processes};
-use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::sync::Server;
 
@@ -58,19 +56,4 @@ fn main() {
     // thread::spawn(move || cap(tx, &args));
     // cap(tx)
     cap(tx, &args)
-}
-
-fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
-    thread::spawn(move || {
-        for packet_info in rx.iter() {
-            let mut clients = clients.write().unwrap();
-
-            clients.retain_mut(|c| {
-                let payload = serde_json::to_string(&packet_info).unwrap();
-                let message = OwnedMessage::Text(payload);
-
-                c.send_message(&message).is_ok()
-            });
-        }
-    });
 }

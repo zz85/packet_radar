@@ -5,7 +5,7 @@ use dashmap::{
 use lazy_static::lazy_static;
 use std::time::{Duration, Instant};
 use tls_parser::{parse_tls_plaintext, TlsMessage, TlsMessageHandshake, TlsRecordType, TlsVersion};
-use tracing::{info, trace};
+use tracing::{info, trace, warn};
 
 lazy_static! {
     /// This is currently just TLS connections
@@ -15,12 +15,6 @@ lazy_static! {
 const TLS_STATS: bool = false;
 
 use super::tls::{process_client_hello, process_server_hello};
-
-// IP Fragmentation
-// https://en.wikipedia.org/wiki/IP_fragmentation
-// https://tools.ietf.org/html/rfc791
-// https://tools.ietf.org/html/rfc815
-// https://packetpushers.net/ip-fragmentation-in-detail/
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnStat {
@@ -173,7 +167,7 @@ pub fn parse_tcp_payload(packet: &[u8], key: &str) -> Option<ConnStat> {
 
     let v = parse_tls_plaintext(&packet)
         .map_err(|e| {
-            info!("Cannot parse {e:?}");
+            warn!("Cannot parse {e:?}");
             // cannot parse
             e
         })

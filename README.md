@@ -96,7 +96,7 @@ This method requires sudo, but for unprivileged users, the lsof method will be t
 - [x] Ping / ICMP Traceroute probes
 - [ ] TCP/UDP trace probes
 - [x] Traffic categorization (UDP, TCP,..
-- [ ] TLS, QUIC)
+- [x] TLS, QUIC)
 - [x] DNS capture
 - [ ] RTT / light distance Analysis
 - [ ] Packet replay

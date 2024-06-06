@@ -1,3 +1,4 @@
+use crossbeam::Receiver;
 use websocket::message::OwnedMessage;
 use websocket::sender::Writer;
 use websocket::server::WsServer;
@@ -11,8 +12,25 @@ use serde_json::json;
 use super::traceroute;
 use crate::dns::reverse_lookup;
 use crate::geoip::{asn_lookup, city_lookup};
-use crate::structs::ClientRequest;
+use crate::structs::{ClientRequest, PacketInfo};
 
+/// pass packet info data to all connected web clients (through websockets)
+pub fn spawn_broadcast(rx: Receiver<PacketInfo>, clients: Arc<RwLock<Vec<Writer<TcpStream>>>>) {
+    thread::spawn(move || {
+        for packet_info in rx.iter() {
+            let mut clients = clients.write().unwrap();
+
+            clients.retain_mut(|c| {
+                let payload = serde_json::to_string(&packet_info).unwrap();
+                let message = OwnedMessage::Text(payload);
+
+                c.send_message(&message).is_ok()
+            });
+        }
+    });
+}
+
+/// main websocket server loop
 pub fn handle_clients(
     server: WsServer<websocket::server::NoTlsAcceptor, std::net::TcpListener>,
     clients: Arc<RwLock<Vec<Writer<TcpStream>>>>,
@@ -23,11 +41,12 @@ pub fn handle_clients(
         thread::spawn(move || {
             let ws = connection.accept().unwrap();
             let ip = ws.peer_addr().unwrap();
-            let (mut rx, mut _tx) = ws.split().unwrap();
+            let (mut rx, ws_tx) = ws.split().unwrap();
 
-            // add writer stream to shared vec
-            clients.write().unwrap().push(_tx);
+            // add writer streams to shared vec
+            clients.write().unwrap().push(ws_tx);
 
+            // receive messages from web clients
             for message in rx.incoming_messages() {
                 let message = message.unwrap();
 
@@ -66,7 +85,7 @@ pub fn handle_clients(
                                 })
                                 .to_string();
 
-                                broadcast(clients.clone(), p);
+                                web_broadcast(&clients, p);
                             }
                             "local_addr" => {
                                 let interfaces = pnet::datalink::interfaces();
@@ -82,7 +101,7 @@ pub fn handle_clients(
                                         })
                                         .to_string();
 
-                                        broadcast(clients.clone(), p);
+                                        web_broadcast(&clients, p);
                                     }
                                 }
                             }
@@ -103,7 +122,7 @@ pub fn handle_clients(
                             "geoip" => {
                                 let ip = data.value;
                                 if let Some(r) = get_geo_ip(ip) {
-                                    broadcast(clients.clone(), r)
+                                    web_broadcast(&clients, r)
                                 };
                             }
                             "processes" => {}
@@ -114,7 +133,7 @@ pub fn handle_clients(
                         // handle filtering
                         // handle get buffers
                     }
-                    OwnedMessage::Binary(buf) => {}
+                    OwnedMessage::Binary(_buf) => {}
                     others => {
                         println!("ok {:?}", others);
                     }
@@ -124,7 +143,8 @@ pub fn handle_clients(
     }
 }
 
-fn broadcast(clients: Arc<RwLock<Vec<Writer<TcpStream>>>>, text: String) {
+// Sends events out to all connection clients
+fn web_broadcast(clients: &RwLock<Vec<Writer<TcpStream>>>, text: String) {
     println!("Broadcasting... {}", text);
     let message = OwnedMessage::Text(text);
     let mut clients = clients.write().unwrap();
