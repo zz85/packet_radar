@@ -58,7 +58,21 @@ fn main() -> io::Result<()> {
             }
         }
 
-        let _ = writeln!(stdout, "{process_to_ja4:#?}");
+        // Report
+        for (process, info) in process_to_ja4.iter() {
+            let pids = info
+                .pids
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let ja4 = info.ja4.iter().cloned().collect::<Vec<_>>().join(", ");
+
+            let _ = writeln!(stdout, "{process} | {pids} | {ja4}");
+        }
+
+        // let _ = writeln!(stdout, "{process_to_ja4:#?}");
         stdout.flush()?;
         std::thread::sleep(Duration::from_millis(5000));
     }
