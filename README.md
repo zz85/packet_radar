@@ -46,6 +46,27 @@ sudo target/debug/packet_radar -m
 (s/debug/release if `--release`)
 ```
 
+### Technical
+
+There are 3 ways packets are processed -
+1. using pcap lib
+2. using pnet datalink
+3. using pcapng parsing
+
+The main module parses the network packets, depending on what protocol has been implemented.
+Some state is kept in statically, while tcp+udp packets as well as JA4 events are emitted via
+a crossbeam mpsc channel.
+
+The evented model allows writing isolated experiments by rebuilding state while collecting events.
+One example is ja4dump, and others through the web visualization that's basically a broadcast of
+the mpsc channels proxied over websockets to the browser.
+
+Another way to write modules is to access the shared state. One example is ja4top.
+
+Or a module who take a combination of both. One example is processes rs where it build it own "top"
+state, but it also has the ability to access the shared connection states to enrich it with process
+infomation.
+
 ### Visualization
 
 ```
@@ -63,7 +84,7 @@ open `html/packet_viz.html` in your browser
 
 
 ### ChangeLog
-Jun 5, 2024 - basic QUIC client hello parsing (available in packet_radar and ja4_collector)
+Jun 5, 2024 - basic QUIC client hello parsing (available in packet_radar, ja4dump, ja4top)
 
 May 24, 2024 - Ability to read from pcap file or stdin (eg. sudo tcpdump -w - | sudo packet_radar -p -  ).
 On macs, tcpdump using pktap will provide process id information during packet capture.
