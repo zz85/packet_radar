@@ -18,7 +18,12 @@ If you like this, you may also be interested in [Space Rader](https://github.com
 
 Core code is written in rust, Visualization UI is done with Canvas + JS.
 
-### Server
+### Utilities
+
+`ja4dump` - like tcpdump but for JA4 TLS client fingerprinting
+`ja4top` - shows ja4 and associated processes
+
+### Building
 
 ```
 ### If you need to install rust

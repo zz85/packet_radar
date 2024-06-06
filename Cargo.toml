@@ -12,12 +12,12 @@ name = "packet_radar"
 path = "src/main.rs"
 
 [[bin]]
-name = "ja4_collector"
-path = "src/ja4_collector.rs"
+name = "ja4dump"
+path = "src/bin/ja4dump.rs"
 
 [[bin]]
-name = "ja4_processes"
-path = "src/ja4_processes.rs"
+name = "ja4top"
+path = "src/bin/ja4top.rs"
 
 [[bin]]
 name = "ja4_df_processes"

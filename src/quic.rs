@@ -241,14 +241,14 @@ pub fn dissect2(packet: &[u8]) -> Option<ClientHello> {
     let intial_encrypted = protected_packet
         .unprotect(&initial_header_key, Default::default())
         .map_err(|e| {
-            info!("cannot unprotect {e}");
+            debug!("cannot unprotect {e}");
         })
         .ok()?;
 
     let clear_initial = intial_encrypted
         .decrypt(&initial_key)
         .map_err(|err| {
-            // info!("cannot decrypt {err}");
+            debug!("cannot decrypt {err}");
             // just move on if we can't decrypt packet
         })
         .ok()?;

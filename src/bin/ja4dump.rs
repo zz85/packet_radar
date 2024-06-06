@@ -8,8 +8,10 @@ use packet_radar::structs::{PacketInfo, PacketType};
 use tracing::info;
 use tracing_subscriber;
 
-/// JA4 process collector
-/// sniffer/tail/snoop/dump/trace
+/// JA4 Dump
+/// sniffer/tail/snoop/dumper/tracer
+/// like tcpdump, but for JA4
+/// Attempts to collect JA4, SNI, process info
 /// Mac only, uses sudo to run with process mode
 fn main() {
     tracing_subscriber::fmt::init();
