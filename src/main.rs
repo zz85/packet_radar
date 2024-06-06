@@ -1,5 +1,5 @@
 use clap::Parser;
-use crossbeam::{unbounded};
+use crossbeam::unbounded;
 use packet_radar::args::Args;
 use packet_radar::client_connection::{handle_clients, spawn_broadcast};
 use packet_radar::packet_capture::cap;

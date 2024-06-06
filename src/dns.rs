@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use quick_cache::sync::Cache;
 use std::fmt;
 use zerocopy::{AsBytes, ByteSlice, FromBytes, LayoutVerified, Unaligned};
 
@@ -6,12 +7,8 @@ use dns_lookup::lookup_addr;
 use std::char;
 use std::net::IpAddr;
 
-use std::collections::HashMap;
-use std::sync::RwLock;
-
 lazy_static! {
-    // use a lock until a performance is known, in which this can be swapped for evmap
-    static ref CACHED_IPS_TO_DOMAIN: RwLock<HashMap<String, String>> = Default::default();
+    static ref CACHED_IPS_TO_DOMAIN: Cache<String, String> = Cache::new(10000);
 }
 
 /**
@@ -23,7 +20,7 @@ pub fn parse_dns(payload: &[u8]) -> Option<DnsPacket<&[u8]>> {
 }
 
 pub fn reverse_lookup(ip: &String) -> Option<String> {
-    let hostname = match CACHED_IPS_TO_DOMAIN.read().unwrap().get(ip) {
+    let hostname = match CACHED_IPS_TO_DOMAIN.get(ip) {
         Some(value) => {
             println!("Using DNS cache domain {} -> {}", ip, value);
             value.clone()
@@ -197,10 +194,7 @@ impl<B: ByteSlice> DnsPacket<B> {
                                 }
 
                                 // println!("Found ipv4 {}", ip_str);
-                                CACHED_IPS_TO_DOMAIN
-                                    .write()
-                                    .unwrap()
-                                    .insert(ip_str.clone(), domain.clone());
+                                CACHED_IPS_TO_DOMAIN.insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::AAAA => {
@@ -221,10 +215,7 @@ impl<B: ByteSlice> DnsPacket<B> {
                                 }
 
                                 // println!("Found ipv6 AAAA {}", ip_str);
-                                CACHED_IPS_TO_DOMAIN
-                                    .write()
-                                    .unwrap()
-                                    .insert(ip_str.clone(), domain.clone());
+                                CACHED_IPS_TO_DOMAIN.insert(ip_str.clone(), domain.clone());
                             }
 
                             RecordTypes::CNAME => {
