@@ -4,22 +4,12 @@
 // find_or_create_conversation
 
 use bytes::Buf;
-use hex_literal::hex;
 use quick_cache::unsync::Cache;
-use ring::hkdf;
 use std::{io::Cursor, sync::Mutex};
 use tls_parser::{parse_tls_message_handshake, TlsMessage, TlsMessageHandshake};
 use tracing::{debug, info};
 
-// should probably utilize this https://github.com/zz85/quic-initial-degreaser/blob/main/src/quic_initial_degreaser.rs
-// since draft 29
-pub const INITIAL_SALT_VALUE: [u8; 20] = hex!("afbfec289993d24c9e9786f19c6111e04390a899");
-pub const INITIAL_CLIENT_LABEL: [u8; 9] = *b"client in";
-pub const INITIAL_SERVER_LABEL: [u8; 9] = *b"server in";
-
 lazy_static::lazy_static! {
-    static ref INITIAL_SALT: hkdf::Salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &INITIAL_SALT_VALUE);
-
     static ref QUIC_CACHE: Mutex<Cache<Vec<u8>, CryptoAssembler>> = Mutex::new(Cache::new(50));
 }
 
@@ -38,28 +28,11 @@ fn read_var_int<B: Buf>(buf: &mut B) -> u64 {
     v
 }
 
-/* https://quicwg.org/base-drafts/draft-ietf-quic-tls.html#name-initial-secrets */
-// create initial decoders
-fn calc_initial_secrets(connection_id: &[u8]) {
-    let initial_secrets = INITIAL_SALT.extract(connection_id);
-
-    let client_initial_secrets = initial_secrets
-        .expand(&[&INITIAL_CLIENT_LABEL], INITIAL_SALT.algorithm())
-        .expect("calc secrets");
-
-    //     client_initial_secret = HKDF-Expand-Label(initial_secret,
-    //         "client in", "",
-    //         Hash.length)
-    // server_initial_secret = HKDF-Expand-Label(initial_secret,
-    //         "server in", "",
-    //         Hash.length)
-    /* Packet numbers are protected with AES128-CTR,
-     * initial packets are protected with AEAD_AES_128_GCM. */
+pub fn dissect(packet: &[u8]) -> Option<ClientHello> {
+    dissect2(packet)
 }
 
-pub fn dissect(packet: &[u8]) -> Option<ClientHello> {
-    return dissect2(packet);
-
+pub fn dissect1(packet: &[u8]) -> Option<ClientHello> {
     let mut view = Cursor::new(packet);
 
     let first_byte = view.get_u8();

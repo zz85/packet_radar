@@ -45,7 +45,6 @@ pub struct ConnStat {
     // TODO combine ConnectionMeta
     // associate dns quries
     // socket info
-    pub pending: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]

@@ -11,6 +11,7 @@ use pnet::packet::udp::UdpPacket;
 
 use lazy_static::lazy_static;
 
+use quick_cache::unsync::Cache;
 use tracing::{debug, info};
 
 use pnet::packet::*;
@@ -21,7 +22,7 @@ use crate::structs::PacketInfo;
 use crate::traceroute::{handle_echo_reply, handle_time_exceeded};
 
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crossbeam::channel::Sender;
 
@@ -33,7 +34,7 @@ const CAPTURE_TCP: bool = true;
 const DEBUG: bool = false;
 
 lazy_static! {
-    pub static ref BUFFER: Arc<Mutex<Vec<u8>>> = Default::default();
+    pub static ref BUFFER: Mutex<Cache<String, Vec<u8>>> = Mutex::new(Cache::new(50));
 }
 
 pub fn is_local(ip: &IpAddr) -> bool {
@@ -288,6 +289,29 @@ fn handle_udp_packet(
                 ..ja4_packet
             };
 
+            let key = match is_local(&source) {
+                true => format!(
+                    "udp_{}:{}_{}:{}",
+                    source,
+                    udp.get_source(),
+                    destination,
+                    udp.get_destination()
+                ),
+                false => format!(
+                    "udp_{}:{}_{}:{}",
+                    destination,
+                    udp.get_destination(),
+                    source,
+                    udp.get_source()
+                ),
+            };
+
+            let mut tcp_state = TCP_STATS.get_or_create_conn(key);
+            tcp_state.pid = info.pid.clone();
+            tcp_state.process_name = info.process.clone();
+            tcp_state.ja4 = info.ja4.clone();
+            tcp_state.sni = info.sni.clone();
+
             tx.send(info).unwrap();
 
             debug!(
@@ -321,132 +345,122 @@ fn handle_tcp_packet(
     packet: &[u8],
     tx: &Sender<PacketInfo>,
     proc: Option<&ProcInfo>,
-) {
+) -> Option<()> {
     if !CAPTURE_TCP {
-        return;
+        return None;
     }
     let tcp = TcpPacket::new(packet);
 
-    if let Some(tcp) = tcp {
-        if DEBUG {
-            info!(
-                "[{}]: TCP Packet: {}:{} > {}:{}; length: {}",
-                interface_name,
-                source,
-                tcp.get_source(),
-                destination,
-                tcp.get_destination(),
-                packet.len()
-            );
-        }
-
-        // generate a key is uniquely id the 5 tuple
-        // instead of is_local(), source < destination is
-        // a hack to generate unique
-        let key = match is_local(&source) {
-            true => format!(
-                "tcp_{}:{}_{}:{}",
-                source,
-                tcp.get_source(),
-                destination,
-                tcp.get_destination()
-            ),
-            false => format!(
-                "tcp_{}:{}_{}:{}",
-                destination,
-                tcp.get_destination(),
-                source,
-                tcp.get_source()
-            ),
-        };
-
-        // tcp.get_acknowledgement()
-        // get_sequence
-        // options raw
-
-        let packet_info = PacketInfo {
-            len: packet.len() as u16, // this is correct, do not use tcp.packet_size();
-            dest: destination.to_string(),
-            src: source.to_string(),
-            dest_port: tcp.get_destination(),
-            src_port: tcp.get_source(),
-            t: crate::structs::PacketType::Tcp,
-            pid: proc.map(|p| p.pid),
-            ..Default::default()
-        };
-
-        let packet_info2 = packet_info.clone();
-
-        // info!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
-
-        tx.send(packet_info).unwrap();
-
-        // strip tcp headers
-        let packet = tcp.payload();
-
-        let is_handshake = is_handshake_packet(packet);
-        // The PSH bit is the 4th bit in the TCP flags byte
-        let push_bit = (tcp.get_flags() & 0x08) != 0;
-        let mut prev = BUFFER.lock().unwrap();
-
-        if is_handshake {
-            if push_bit {
-                // ready to parse
-                let stats = parse_tcp_payload(packet, &key);
-
-                if let Some(conn) = stats {
-                    let info = PacketInfo {
-                        ja4: conn.ja4,
-                        sni: conn.sni,
-                        process: proc.and_then(|p| p.name.as_ref().map(|v| v.clone())),
-                        t: crate::structs::PacketType::Ja4,
-                        ..packet_info2
-                    };
-
-                    let mut moo = TCP_STATS.get_or_create_conn(key);
-                    moo.pid = info.pid.clone();
-                    moo.process_name = info.process.clone();
-
-                    tx.send(info).unwrap();
-                }
-                return;
-            }
-
-            // append to buffer
-            prev.extend_from_slice(packet);
-        } else {
-            if prev.is_empty() {
-                return;
-            }
-
-            // reassemble handshake
-            prev.extend_from_slice(packet);
-
-            if push_bit || prev.len() > 64000 {
-                // if push bit is set, or buffer reaches 64KB, parse and flush
-                let stats = parse_tcp_payload(&prev[..], &key);
-
-                if let Some(conn) = stats {
-                    let info = PacketInfo {
-                        ja4: conn.ja4,
-                        sni: conn.sni,
-                        process: proc.and_then(|p| p.name.as_ref().map(|v| v.clone())),
-                        t: crate::structs::PacketType::Ja4,
-                        ..packet_info2
-                    };
-
-                    let mut moo = TCP_STATS.get_or_create_conn(key);
-                    moo.pid = info.pid.clone();
-                    moo.process_name = info.process.clone();
-
-                    tx.send(info).unwrap();
-                }
-                prev.clear();
-            }
-        }
-    } else {
+    if tcp.is_none() {
         info!("[{}]: Malformed TCP Packet", interface_name);
     }
+
+    let tcp = tcp?;
+
+    if DEBUG {
+        info!(
+            "[{}]: TCP Packet: {}:{} > {}:{}; length: {}",
+            interface_name,
+            source,
+            tcp.get_source(),
+            destination,
+            tcp.get_destination(),
+            packet.len()
+        );
+    }
+
+    // generate a key is uniquely id the 5 tuple
+    // instead of is_local(), source < destination is
+    // a hack to generate unique
+    let key = match is_local(&source) {
+        true => format!(
+            "tcp_{}:{}_{}:{}",
+            source,
+            tcp.get_source(),
+            destination,
+            tcp.get_destination()
+        ),
+        false => format!(
+            "tcp_{}:{}_{}:{}",
+            destination,
+            tcp.get_destination(),
+            source,
+            tcp.get_source()
+        ),
+    };
+
+    // tcp.get_acknowledgement()
+    // get_sequence
+    // options raw
+
+    let packet_info = PacketInfo {
+        len: packet.len() as u16, // this is correct, do not use tcp.packet_size();
+        dest: destination.to_string(),
+        src: source.to_string(),
+        dest_port: tcp.get_destination(),
+        src_port: tcp.get_source(),
+        t: crate::structs::PacketType::Tcp,
+        pid: proc.map(|p| p.pid),
+        ..Default::default()
+    };
+
+    let packet_info2 = packet_info.clone();
+
+    // info!("tcp: {:?} {:0b} {proc:?}", packet_info, tcp.get_flags());
+
+    tx.send(packet_info).unwrap();
+
+    // strip tcp headers
+    let packet = tcp.payload();
+
+    let is_handshake = is_handshake_packet(packet);
+    // The PSH bit is the 4th bit in the TCP flags byte
+    let push_bit = (tcp.get_flags() & 0x08) != 0;
+
+    let mut cache = BUFFER.lock().unwrap();
+    let buffered = cache.get(&key).is_some();
+
+    if !(is_handshake || buffered) {
+        return Some(());
+    }
+
+    let mut buffer = cache
+        .get_mut_or_insert_with(&key, || Ok::<_, std::io::Error>(Vec::new()))
+        .unwrap()
+        .unwrap();
+
+    buffer.extend_from_slice(packet);
+
+    debug!(
+            "key: {key}, is_handshake: {is_handshake}, buffered: {buffered}, push_bit: {push_bit}, pkt len: {}, buffer len: {}",
+            packet.len(), buffer.len()
+        );
+
+    if push_bit || buffer.len() > 64000 {
+        // ready to parse
+        let stats = parse_tcp_payload(&buffer, &key);
+        debug!("tls handshake {stats:?}");
+
+        drop(buffer);
+        cache.remove(&key);
+
+        if let Some(conn) = stats {
+            let info = PacketInfo {
+                ja4: conn.ja4,
+                sni: conn.sni,
+                process: proc.and_then(|p| p.name.as_ref().map(|v| v.clone())),
+                t: crate::structs::PacketType::Ja4,
+                ..packet_info2
+            };
+
+            let mut tcp_state = TCP_STATS.get_or_create_conn(key);
+            tcp_state.pid = info.pid.clone();
+            tcp_state.process_name = info.process.clone();
+
+            tx.send(info).unwrap();
+        }
+    }
+    Some(())
 }
 
 fn handle_transport_protocol(
@@ -468,7 +482,7 @@ fn handle_transport_protocol(
             handle_udp_packet(interface_name, source, destination, packet, tx, proc)
         }
         IpNextHeaderProtocols::Tcp => {
-            handle_tcp_packet(interface_name, source, destination, packet, tx, proc)
+            handle_tcp_packet(interface_name, source, destination, packet, tx, proc);
         }
         IpNextHeaderProtocols::Icmp => {
             handle_icmp_packet(interface_name, source, destination, packet)

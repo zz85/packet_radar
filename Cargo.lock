@@ -180,7 +180,7 @@ dependencies = [
  "aws-lc-sys",
  "mirai-annotations",
  "paste",
- "untrusted 0.7.1",
+ "untrusted",
  "zeroize",
 ]
 
@@ -1813,7 +1813,6 @@ dependencies = [
  "futures 0.3.30",
  "hdrhistogram",
  "hex",
- "hex-literal",
  "itertools 0.13.0",
  "lazy_static",
  "libc",
@@ -1830,7 +1829,6 @@ dependencies = [
  "pretty-bytes",
  "quick_cache",
  "rand 0.8.5",
- "ring 0.17.8",
  "s2n-codec",
  "s2n-quic-core",
  "s2n-quic-crypto",
@@ -2862,25 +2860,10 @@ dependencies = [
  "cc",
  "libc",
  "once_cell",
- "spin 0.5.2",
- "untrusted 0.7.1",
+ "spin",
+ "untrusted",
  "web-sys",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "ring"
-version = "0.17.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c17fa4cb658e3583423e915b9f3acc01cceaee1860e33d59ebae66adc3a2dc0d"
-dependencies = [
- "cc",
- "cfg-if 1.0.0",
- "getrandom",
- "libc",
- "spin 0.9.8",
- "untrusted 0.9.0",
- "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2979,7 +2962,7 @@ dependencies = [
  "aws-lc-rs",
  "cfg-if 1.0.0",
  "lazy_static",
- "ring 0.16.20",
+ "ring",
  "s2n-codec",
  "s2n-quic-core",
  "zeroize",
@@ -3211,12 +3194,6 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
-
-[[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "sqlparser"
@@ -3650,12 +3627,6 @@ name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
-
-[[package]]
-name = "untrusted"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "url"
