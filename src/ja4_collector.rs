@@ -9,7 +9,7 @@ use tracing::info;
 use tracing_subscriber;
 
 /// JA4 process collector
-/// sniffer/tail
+/// sniffer/tail/snoop/dump/trace
 /// Mac only, uses sudo to run with process mode
 fn main() {
     tracing_subscriber::fmt::init();

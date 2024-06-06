@@ -5,9 +5,11 @@
 
 use bytes::Buf;
 use hex_literal::hex;
+use quick_cache::sync::Cache;
 use ring::hkdf;
 use std::io::Cursor;
-use tracing::debug;
+use tls_parser::{parse_tls_message_handshake, TlsMessage, TlsMessageHandshake};
+use tracing::{debug, info};
 
 // should probably utilize this https://github.com/zz85/quic-initial-degreaser/blob/main/src/quic_initial_degreaser.rs
 // since draft 29
@@ -17,6 +19,8 @@ pub const INITIAL_SERVER_LABEL: [u8; 9] = *b"server in";
 
 lazy_static::lazy_static! {
     static ref INITIAL_SALT: hkdf::Salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &INITIAL_SALT_VALUE);
+
+    static ref QUIC_CACHE: Cache<Vec<u8>, CryptoAssembler> = Cache::new(50);
 }
 
 // https://quicwg.org/base-drafts/draft-ietf-quic-transport.html#sample-varint
@@ -53,7 +57,9 @@ fn calc_initial_secrets(connection_id: &[u8]) {
      * initial packets are protected with AEAD_AES_128_GCM. */
 }
 
-pub fn dissect(packet: &[u8]) -> bool {
+pub fn dissect(packet: &[u8]) -> Option<ClientHello> {
+    return dissect2(packet);
+
     let mut view = Cursor::new(packet);
 
     let first_byte = view.get_u8();
@@ -75,13 +81,13 @@ pub fn dissect(packet: &[u8]) -> bool {
 
         let dcid_len = view.get_u8();
         if dcid_len > 20 {
-            return false;
+            return None;
         }
         let dcid_buf = view.copy_to_bytes(dcid_len as usize);
 
         let scid_len = view.get_u8();
         if scid_len > 20 {
-            return false;
+            return None;
         }
         let scid_buf = view.copy_to_bytes(scid_len as usize);
 
@@ -115,9 +121,9 @@ pub fn dissect(packet: &[u8]) -> bool {
             packet_type_str, version_str, dcid_buf, scid_buf
         );
 
-        return true;
+        return None;
     }
-    false
+    None
 }
 
 fn get_long_packet_type_str(long_type: u8) -> &'static str {
@@ -177,5 +183,160 @@ fn get_version_str(version: u32) -> &'static str {
         0x6b3343cf => "v2",
         version if (version & 0x0F0F0F0F) == 0x0a0a0a0a => "version negotiation",
         _ => "unknown version",
+    }
+}
+
+fn should_parse(packet: &[u8]) -> bool {
+    if packet.len() < 1 {
+        return false;
+    }
+
+    let first_byte = packet[0];
+    let long_header = first_byte & 0b10000000 > 0;
+    let fixed = first_byte & 0x40 > 0;
+
+    long_header && fixed
+}
+
+use s2n_codec::DecoderBufferMut;
+use s2n_quic_core::{
+    connection::id::ConnectionInfo,
+    crypto::InitialKey,
+    frame::{Crypto, Frame, FrameMut},
+    inet::SocketAddress,
+    packet::ProtectedPacket,
+};
+
+use crate::tls::{process_client_hello, ClientHello};
+
+pub fn dissect2(packet: &[u8]) -> Option<ClientHello> {
+    if !should_parse(packet) {
+        return None;
+    }
+
+    let mut data = [0; 1500];
+    let decode_buffer = &mut data[..packet.len()];
+    decode_buffer.copy_from_slice(packet);
+
+    let payload = DecoderBufferMut::new(decode_buffer);
+    let remote_address = SocketAddress::default();
+    let connection_info = ConnectionInfo::new(&remote_address);
+
+    let (packet, _remaining) = ProtectedPacket::decode(payload, &connection_info, &0).ok()?;
+
+    let version = packet.version()?;
+
+    // care only about initial packets
+    let protected_packet = match packet {
+        ProtectedPacket::Initial(packet) => packet,
+        _ => {
+            return None;
+        }
+    };
+
+    let (initial_key, initial_header_key) = s2n_quic_crypto::initial::InitialKey::new_server(
+        protected_packet.destination_connection_id(),
+    );
+
+    let intial_encrypted = protected_packet
+        .unprotect(&initial_header_key, Default::default())
+        .map_err(|e| {
+            info!("cannot unprotect {e}");
+        })
+        .ok()?;
+
+    let clear_initial = intial_encrypted
+        .decrypt(&initial_key)
+        .map_err(|err| {
+            // info!("cannot decrypt {err}");
+            // just move on if we can't decrypt packet
+        })
+        .ok()?;
+
+    let packet_number = clear_initial.packet_number;
+    let dcid = clear_initial.destination_connection_id().to_vec();
+    let scid = clear_initial.source_connection_id().to_vec();
+
+    debug!("QUIC Packet version {version}. #{packet_number}. scid {scid:02x?} -> dcid {dcid:02x?}");
+
+    let mut payload = clear_initial.payload;
+    let mut crypto = QUIC_CACHE.get(&dcid).unwrap_or(CryptoAssembler::new());
+
+    // iterate frames from the QUIC packet
+    while !payload.is_empty() {
+        let (frame, remaining) = payload.decode::<FrameMut>().unwrap();
+        if let Frame::Crypto(frame) = frame {
+            // handle_crypto_frame
+            crypto.add_frame(frame);
+        }
+
+        payload = remaining;
+    }
+
+    if crypto.completed() {
+        QUIC_CACHE.remove(&dcid);
+        let (_, msg) = parse_tls_message_handshake(crypto.get_bytes())
+            .map_err(|e| info!("Cannot parse {e:?}"))
+            .ok()?;
+
+        if let TlsMessage::Handshake(TlsMessageHandshake::ClientHello(client_hello)) = msg {
+            let ch = process_client_hello(client_hello);
+
+            info!("QUIC {ch:?}");
+            return Some(ch);
+        }
+    } else {
+        QUIC_CACHE.insert(dcid, crypto);
+    }
+
+    None
+}
+
+/// we should probably use s2n_quic_core::buffer::Reassembler
+/// as this is something simple, doesn't check duplicate bytes range
+/// but could do for now
+#[derive(Clone, Debug)]
+struct CryptoAssembler {
+    // up to 64k support
+    crypto: [u8; 1 << 16],
+    size: usize,
+    recv: usize,
+}
+
+impl CryptoAssembler {
+    fn new() -> Self {
+        Self {
+            crypto: [0u8; 1 << 16],
+            size: 0,
+            recv: 0,
+        }
+    }
+    fn add_frame(&mut self, frame: Crypto<DecoderBufferMut>) {
+        let slice = frame.data.as_less_safe_slice();
+        let offset = frame.offset.as_u64() as usize;
+        let to = offset + slice.len();
+
+        debug!("received: {offset}..{to}");
+
+        self.crypto[offset..to].copy_from_slice(slice);
+        // let's expect the first 4 bytes to be together
+        if offset == 0 && to > 2 {
+            let target: u32 = ((self.crypto[1] as u32) << 16)
+                + ((self.crypto[2] as u32) << 8)
+                + self.crypto[3] as u32;
+            self.size = target as usize + 4;
+            debug!("matched 4 bytes {:x} - {target}", self.crypto[0]);
+        }
+
+        self.recv += slice.len();
+    }
+
+    fn get_bytes(&self) -> &[u8] {
+        &self.crypto[..self.size]
+    }
+
+    fn completed(&self) -> bool {
+        debug!("QUIC Crypto completed: {}/{}", self.recv, self.size);
+        self.size > 0 && self.recv == self.size
     }
 }

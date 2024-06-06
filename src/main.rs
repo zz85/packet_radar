@@ -20,6 +20,7 @@ use std::thread;
 
 fn main() {
     let args = Args::parse();
+    tracing_subscriber::fmt::init();
 
     // test_lookups()
     // let (tx, rx) = mpsc::channel();

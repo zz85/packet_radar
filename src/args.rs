@@ -16,6 +16,10 @@ pub struct Args {
     #[arg(short, long, default_value = "127.0.0.1:3012")]
     pub server: String,
 
+    /// Network interface
+    #[arg(short, long)]
+    pub interface: Option<String>,
+
     #[arg(short, long, default_value_t = false)]
     pub tls_fingerprint: bool,
 

@@ -114,12 +114,24 @@ fn pcap(tx: Sender<PacketInfo>, name: &str) {
 
 pub fn cap(tx: Sender<PacketInfo>, args: &Args) {
     info!("Running pcap...");
-    info!("Devices {:?}", Device::list());
+
+    if let Ok(devices) = Device::list() {
+        debug!("Devices {devices:?}");
+
+        devices.iter().for_each(|d| info!("{}", d.name))
+    }
 
     let device = Device::lookup().unwrap().unwrap();
-    info!("Default device {:?}", device);
 
-    let name = device.name.as_str();
+    let name = args
+        .interface
+        .as_ref()
+        .map(|m| m.as_str())
+        .unwrap_or_else(|| {
+            info!("Default device {:?}", device);
+            device.name.as_str()
+        });
+
     // "any";
     // "lo0";
 
@@ -237,6 +249,8 @@ fn handle_udp_packet(
             ..Default::default()
         };
 
+        let ja4_packet = packet_info.clone();
+
         tx.send(packet_info).unwrap();
 
         if DEBUG {
@@ -261,9 +275,21 @@ fn handle_udp_packet(
                 // info!("DNS {}\n", v);
                 v.parse_body();
             });
+
+            return;
         }
 
-        if quic::dissect(payload) {
+        if let Some(ch) = quic::dissect(payload) {
+            let info = PacketInfo {
+                ja4: ch.ja4,
+                sni: Some(ch.sni),
+                t: crate::structs::PacketType::Ja4,
+                process: proc.and_then(|p| p.name.as_ref().map(|v| v.clone())),
+                ..ja4_packet
+            };
+
+            tx.send(info).unwrap();
+
             debug!(
                 "[{}]: QUIC Packet: {}:{} > {}:{}; length: {}",
                 interface_name,
@@ -296,6 +322,9 @@ fn handle_tcp_packet(
     tx: &Sender<PacketInfo>,
     proc: Option<&ProcInfo>,
 ) {
+    if !CAPTURE_TCP {
+        return;
+    }
     let tcp = TcpPacket::new(packet);
 
     if let Some(tcp) = tcp {
@@ -439,9 +468,7 @@ fn handle_transport_protocol(
             handle_udp_packet(interface_name, source, destination, packet, tx, proc)
         }
         IpNextHeaderProtocols::Tcp => {
-            if CAPTURE_TCP {
-                handle_tcp_packet(interface_name, source, destination, packet, tx, proc)
-            }
+            handle_tcp_packet(interface_name, source, destination, packet, tx, proc)
         }
         IpNextHeaderProtocols::Icmp => {
             handle_icmp_packet(interface_name, source, destination, packet)

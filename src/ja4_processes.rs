@@ -19,7 +19,7 @@ use packet_radar::tcp::TCP_STATS;
 use tracing::info;
 use tracing_subscriber;
 
-/// JA4 process collector
+/// JA4 process top
 /// Mac only, uses sudo to run with process mode
 fn main() -> io::Result<()> {
     // tracing_subscriber::fmt::init();

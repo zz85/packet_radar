@@ -170,6 +170,7 @@ pub fn pcap_parse_with_reader<T: Read>(tx: Sender<PacketInfo>, reader: &mut Pcap
         }
     }
     println!("num_blocks: {}", num_blocks);
+    std::thread::sleep(std::time::Duration::from_millis(10000));
 }
 
 /*

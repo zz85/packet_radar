@@ -58,6 +58,8 @@ open `html/packet_viz.html` in your browser
 
 
 ### ChangeLog
+Jun 5, 2024 - basic QUIC client hello parsing (available in packet_radar and ja4_collector)
+
 May 24, 2024 - Ability to read from pcap file or stdin (eg. sudo tcpdump -w - | sudo packet_radar -p -  ).
 On macs, tcpdump using pktap will provide process id information during packet capture.
 This method requires sudo, but for unprivileged users, the lsof method will be the fallback.

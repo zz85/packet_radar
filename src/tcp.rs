@@ -45,6 +45,7 @@ pub struct ConnStat {
     // TODO combine ConnectionMeta
     // associate dns quries
     // socket info
+    pub pending: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,7 +149,7 @@ impl TcpStats {
 }
 
 pub fn is_handshake_packet(packet: &[u8]) -> bool {
-    packet.len() > 4 // heuristics
+    packet.len() > 4 // heuristics - byte 1 for TLS, 2..3 version, 4..5 version
     && packet[0] == 0x16
     && packet[1] == 0x03
 }
