@@ -72,12 +72,15 @@ function connect_packet_server(handler) {
                 return;
             }
 
-            const { src, dest, len, src_port, dest_port } = data;
+            const { src, dest, len, src_port, dest_port, t } = data;
 
             check_host(src);
             check_host(dest);
 
-            handler(data);
+            if (t === 't' | t == 'u') {
+                // ignore other types like ja4 for now
+                handler(data);
+            }
             buffer.put(data);
         } catch (e) {
             console.log('error', m, e);
