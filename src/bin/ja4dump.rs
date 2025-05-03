@@ -17,7 +17,7 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     let mut args = Args::default();
-    args.pcap_file = Some("!".into());
+    // args.pcap_file = Some("!".into());
 
     let (tx, rx) = unbounded::<PacketInfo>();
 
@@ -56,9 +56,9 @@ fn main() {
                 }
             };
 
-            // info!("{ja4}\t {process}({pid})\t{sni}\t{src}:{src_port}→ {dest}:{dest_port}");
+            info!("{ja4}\t {process}({pid})\t{sni}\t{src}:{src_port}→ {dest}:{dest_port}");
 
-            info!("{ja4}\t {process} ({pid})\t{sni} ({dest}:{dest_port})");
+            // info!("{ja4}\t {process} ({pid})\t{sni} ({dest}:{dest_port})");
         }
     });
 
